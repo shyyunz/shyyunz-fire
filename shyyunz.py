@@ -503,7 +503,9 @@ async def audit_routine():
 
         elif c == "7":
             idx = input("Nr. do alvo: ").strip()
-            if idx in table_map:
+            if idx not in table_map:
+                console.print("[red]Número inválido.[/red]")
+            else:
                 tabela = table_map[idx]['name']
                 console.print(f"\n[bold cyan]--- EDITOR INTELIGENTE: '{tabela}' ---[/bold cyan]")
                 console.print("[dim]Buscando registros atuais...[/dim]")
@@ -511,106 +513,107 @@ async def audit_routine():
                     async with httpx.AsyncClient() as cl:
                         r = await cl.get(f"{auditor.base_url}{tabela}?select=*", headers=auditor.headers, params={"limit": 20})
                         rows = r.json()
-                        if not rows or not isinstance(rows, list):
-                            console.print("[red]Nenhum dado encontrado nesta tabela.[/red]")
-                            continue
-                        
-                        # Detectar coluna de ID (id, key, uuid, etc)
+                    
+                    if not rows or not isinstance(rows, list):
+                        console.print("[red]Nenhum dado encontrado.[/red]")
+                    else:
+                        # Detectar coluna de ID
                         id_col = None
                         for col_name in ["id", "key", "uuid", "uid", "name", "slug"]:
                             if col_name in rows[0]: id_col = col_name; break
                         if not id_col: id_col = list(rows[0].keys())[0]
                         
-                        # Mostrar registros numerados
+                        # Mostrar registros
                         console.print(f"\n[bold yellow]Registros encontrados ({len(rows)}):[/bold yellow]")
                         for ri, row in enumerate(rows, 1):
                             label = row.get(id_col, "?")
                             if isinstance(label, dict): label = json.dumps(label)[:60]
-                            preview = str(label)[:80]
-                            console.print(f"  [cyan][{ri}][/cyan] {id_col}=[bold]{preview}[/bold]")
+                            console.print(f"  [cyan][{ri}][/cyan] {id_col}=[bold]{str(label)[:80]}[/bold]")
                         
                         pick = input(f"\nQual registro editar? (1-{len(rows)}): ").strip()
                         if not pick.isdigit() or int(pick) < 1 or int(pick) > len(rows):
-                            console.print("[red]Número inválido.[/red]"); continue
-                        
-                        selected = rows[int(pick) - 1]
-                        filter_val = selected[id_col]
-                        filtro = f"{id_col}=eq.{filter_val}"
-                        
-                        # Mostrar campos editáveis
-                        console.print(f"\n[bold yellow]Campos do registro selecionado:[/bold yellow]")
-                        flat_fields = {}
-                        field_num = 1
-                        for col, val in selected.items():
-                            if isinstance(val, dict):
-                                console.print(f"  [cyan][{col}][/cyan] (JSON com subcampos):")
-                                for sub_k, sub_v in val.items():
-                                    flat_fields[str(field_num)] = (col, sub_k, sub_v)
-                                    display_v = str(sub_v)[:60] if sub_v else "[vazio]"
-                                    console.print(f"    [white][{field_num}][/white] {sub_k} = [dim]{display_v}[/dim]")
-                                    field_num += 1
-                            else:
-                                flat_fields[str(field_num)] = (col, None, val)
-                                display_v = str(val)[:60] if val else "[vazio]"
-                                console.print(f"  [white][{field_num}][/white] {col} = [dim]{display_v}[/dim]")
-                                field_num += 1
-                        
-                        # Coletar edições
-                        console.print(f"\n[bold cyan]Quais campos quer alterar?[/bold cyan]")
-                        console.print("[dim]  Digite o número do campo e o novo valor. Ex: 5=novo_valor[/dim]")
-                        console.print("[dim]  Digite 'OK' quando terminar ou 'CANCELAR' para sair.[/dim]")
-                        
-                        changes = {}
-                        json_changes = {}
-                        cancelled = False
-                        while True:
-                            pending = len(changes) + len(json_changes)
-                            entry = input(f"  Edição ({pending} alterações): ").strip()
-                            if entry.upper() == "CANCELAR":
-                                cancelled = True; break
-                            if not entry or entry.upper() == "OK":
-                                if pending > 0: break
-                                console.print("[yellow]Nenhuma edição feita. Digite CANCELAR para sair.[/yellow]")
-                                continue
-                            if "=" not in entry:
-                                console.print("[red]    Formato: numero=novo_valor (ex: 5=11999990000)[/red]")
-                                continue
-                            num, new_val = entry.split("=", 1)
-                            num = num.strip()
-                            new_val = new_val.strip()
-                            if num not in flat_fields:
-                                console.print(f"[red]    Campo [{num}] não encontrado.[/red]")
-                                continue
+                            console.print("[red]Número inválido.[/red]")
+                        else:
+                            selected = rows[int(pick) - 1]
+                            filter_val = selected[id_col]
+                            filtro = f"{id_col}=eq.{filter_val}"
                             
-                            col, sub_key, old_val = flat_fields[num]
-                            if sub_key:
-                                if col not in json_changes:
-                                    json_changes[col] = dict(selected[col])
-                                json_changes[col][sub_key] = new_val
-                                console.print(f"[green]    ✓ {col}.{sub_key}: {str(old_val)[:30]} → {new_val}[/green]")
+                            # Mostrar campos editáveis
+                            console.print(f"\n[bold yellow]Campos do registro:[/bold yellow]")
+                            flat_fields = {}
+                            field_num = 1
+                            for col, val in selected.items():
+                                if isinstance(val, dict):
+                                    console.print(f"  [cyan]{col}[/cyan] (JSON):")
+                                    for sub_k, sub_v in val.items():
+                                        flat_fields[str(field_num)] = (col, sub_k, sub_v)
+                                        dv = str(sub_v)[:60] if sub_v else "[vazio]"
+                                        console.print(f"    [white][{field_num}][/white] {sub_k} = [dim]{dv}[/dim]")
+                                        field_num += 1
+                                else:
+                                    flat_fields[str(field_num)] = (col, None, val)
+                                    dv = str(val)[:60] if val else "[vazio]"
+                                    console.print(f"  [white][{field_num}][/white] {col} = [dim]{dv}[/dim]")
+                                    field_num += 1
+                            
+                            # Coletar edições
+                            console.print(f"\n[bold cyan]Quais campos alterar?[/bold cyan]")
+                            console.print("[dim]  numero=novo_valor (ex: 5=shyyunz). Enter/OK = enviar, CANCELAR = sair.[/dim]")
+                            
+                            changes = {}
+                            json_changes = {}
+                            cancelled = False
+                            while True:
+                                p = len(changes) + len(json_changes)
+                                entry = input(f"  [{p} edições] > ").strip()
+                                if entry.upper() == "CANCELAR":
+                                    cancelled = True
+                                    break
+                                if not entry or entry.upper() == "OK":
+                                    if p > 0:
+                                        break
+                                    else:
+                                        console.print("[yellow]    Nada editado ainda. CANCELAR para sair.[/yellow]")
+                                        continue
+                                if "=" not in entry:
+                                    console.print("[red]    Formato: numero=novo_valor[/red]")
+                                    continue
+                                num, new_val = entry.split("=", 1)
+                                num = num.strip()
+                                new_val = new_val.strip()
+                                if num not in flat_fields:
+                                    console.print(f"[red]    Campo [{num}] não existe.[/red]")
+                                    continue
+                                col, sub_key, old_val = flat_fields[num]
+                                if sub_key:
+                                    if col not in json_changes:
+                                        json_changes[col] = dict(selected[col])
+                                    json_changes[col][sub_key] = new_val
+                                    console.print(f"[green]    ✓ {col}.{sub_key} → {new_val}[/green]")
+                                else:
+                                    if new_val.isdigit(): new_val = int(new_val)
+                                    elif new_val.lower() in ["true", "false"]: new_val = new_val.lower() == "true"
+                                    changes[col] = new_val
+                                    console.print(f"[green]    ✓ {col} → {new_val}[/green]")
+                            
+                            # Enviar se não cancelou
+                            if not cancelled:
+                                payload = {**changes, **json_changes}
+                                if payload:
+                                    console.print(f"\n[dim]Filtro: {filtro}[/dim]")
+                                    console.print(f"[dim]Payload: {json.dumps(payload, ensure_ascii=False, indent=2)}[/dim]")
+                                    confirma = input("\n[bold]Confirmar edição? (S/N): [/bold]").strip().upper()
+                                    if confirma == "S":
+                                        async with httpx.AsyncClient() as cl2:
+                                            res = await cl2.patch(f"{auditor.base_url}{tabela}?{filtro}", headers=auditor.headers, json=payload)
+                                            if res.status_code in [200, 204]:
+                                                console.print(f"[bold green][+] EDITADO COM SUCESSO! ({res.status_code})[/bold green]")
+                                            else:
+                                                console.print(f"[red]Erro ({res.status_code}): {res.text[:300]}[/red]")
+                                    else:
+                                        console.print("[yellow]Não enviado.[/yellow]")
                             else:
-                                if new_val.isdigit(): new_val = int(new_val)
-                                elif new_val.lower() in ["true", "false"]: new_val = new_val.lower() == "true"
-                                changes[col] = new_val
-                                console.print(f"[green]    ✓ {col}: {str(old_val)[:30]} → {new_val}[/green]")
-                        
-                        if cancelled:
-                            console.print("[yellow]Edição cancelada.[/yellow]")
-                            continue
-                        
-                        payload = {**changes, **json_changes}
-                        if not payload:
-                            console.print("[yellow]Nenhuma alteração feita.[/yellow]")
-                            continue
-                        
-                        console.print(f"\n[dim]Filtro: {filtro}[/dim]")
-                        console.print(f"[dim]Payload: {json.dumps(payload, ensure_ascii=False, indent=2)}[/dim]")
-                        if input("\nConfirmar edição? (S/N): ").strip().upper() == "S":
-                            res = await cl.patch(f"{auditor.base_url}{tabela}?{filtro}", headers=auditor.headers, json=payload)
-                            if res.status_code in [200, 204]:
-                                console.print(f"[bold green][+] Editado com sucesso! ({res.status_code})[/bold green]")
-                            else:
-                                console.print(f"[red]Erro ({res.status_code}): {res.text[:300]}[/red]")
+                                console.print("[yellow]Cancelado.[/yellow]")
                 except Exception as e:
                     console.print(f"[red]Erro: {e}[/red]")
 
