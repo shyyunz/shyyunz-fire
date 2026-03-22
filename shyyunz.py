@@ -528,19 +528,52 @@ async def audit_routine():
 
         elif c == "6":
             idx = input("Nr. do alvo: ").strip()
-            if idx in table_map:
+            if idx not in table_map:
+                console.print("[red]Número inválido.[/red]")
+            else:
                 tabela = table_map[idx]['name']
-                console.print(f"\n[bold cyan]--- INSERIR DADOS em '{tabela}' ---[/bold cyan]")
-                p = prompt_payload()
-                if p:
-                    console.print(f"\n[dim]Payload: {json.dumps(p)}[/dim]")
-                    if input("Enviar? (S/N): ").strip().upper() == "S":
-                        async with httpx.AsyncClient() as cl:
-                            res = await cl.post(f"{auditor.base_url}{tabela}", headers=auditor.headers, json=p)
-                            if res.status_code in [200, 201]:
-                                console.print(f"[bold green][+] Inserido com sucesso! ({res.status_code})[/bold green]")
+                console.print(f"\n[bold cyan]--- INSERIR em '{tabela}' ---[/bold cyan]")
+                try:
+                    async with httpx.AsyncClient() as cl:
+                        r = await cl.get(f"{auditor.base_url}{tabela}?select=*", headers=auditor.headers, params={"limit": 1})
+                        sample = r.json()
+                    cols = []
+                    if sample and isinstance(sample, list):
+                        cols = list(sample[0].keys())
+                        console.print(f"[bold yellow]Colunas disponíveis:[/bold yellow]")
+                        for ci, col in enumerate(cols, 1):
+                            val = sample[0][col]
+                            tipo = "JSON" if isinstance(val, dict) else "lista" if isinstance(val, list) else type(val).__name__ if val is not None else "?"
+                            console.print(f"  [white][{ci}][/white] {col} [dim]({tipo})[/dim]")
+                    console.print(f"\n[bold cyan]Digite os dados separados por vírgula:[/bold cyan]")
+                    console.print("[dim]  coluna=valor, coluna=valor[/dim]")
+                    console.print("[dim]  Exemplo: name=João, email=joao@mail.com, status=active[/dim]")
+                    raw = input("\n  Dados: ").strip()
+                    if raw and raw.upper() != "CANCELAR":
+                        payload = {}
+                        for part in raw.split(","):
+                            part = part.strip()
+                            if "=" not in part: continue
+                            col, val = part.split("=", 1)
+                            col = col.strip(); val = val.strip()
+                            if val.isdigit(): val = int(val)
+                            elif val.lower() in ["true", "false"]: val = val.lower() == "true"
+                            payload[col] = val
+                            console.print(f"[green]  ✓ {col} = {val}[/green]")
+                        if payload:
+                            console.print(f"\n[dim]Payload: {json.dumps(payload, ensure_ascii=False)}[/dim]")
+                            ok = input("\nInserir? (S/N): ").strip().upper()
+                            if ok == "S":
+                                async with httpx.AsyncClient() as cl2:
+                                    res = await cl2.post(f"{auditor.base_url}{tabela}", headers={**auditor.headers, "Prefer": "return=representation"}, json=payload)
+                                if res.status_code in [200, 201]:
+                                    console.print(f"[bold green][+] INSERIDO COM SUCESSO! ({res.status_code})[/bold green]")
+                                else:
+                                    console.print(f"[red]Erro ({res.status_code}): {res.text[:300]}[/red]")
                             else:
-                                console.print(f"[red]Erro ({res.status_code}): {res.text[:300]}[/red]")
+                                console.print("[yellow]Cancelado.[/yellow]")
+                except Exception as e:
+                    console.print(f"[red]Erro: {e}[/red]")
 
         elif c == "7":
             idx = input("Nr. do alvo: ").strip()
@@ -641,24 +674,52 @@ async def audit_routine():
 
         elif c == "8":
             idx = input("Nr. do alvo: ").strip()
-            if idx in table_map:
+            if idx not in table_map:
+                console.print("[red]Número inválido.[/red]")
+            else:
                 tabela = table_map[idx]['name']
-                console.print(f"\n[bold red]--- DELETAR DADOS de '{tabela}' ---[/bold red]")
-                console.print("[dim]  Formato do filtro: coluna=eq.valor[/dim]")
-                console.print("[dim]  Exemplos: id=eq.5   ou   status=eq.cancelled[/dim]")
-                filtro = input("\n  Filtro: ").strip()
-                if filtro:
-                    console.print(f"\n[bold red]⚠ ATENÇÃO: Isso vai deletar de '{tabela}' onde {filtro}[/bold red]")
-                    confirm = input("Tem certeza? Digite 'DELETAR' para confirmar: ").strip()
-                    if confirm == "DELETAR":
-                        async with httpx.AsyncClient() as cl:
-                            res = await cl.delete(f"{auditor.base_url}{tabela}?{filtro}", headers=auditor.headers)
-                            if res.status_code in [200, 204]:
-                                console.print(f"[bold green][+] Deletado! ({res.status_code})[/bold green]")
-                            else:
-                                console.print(f"[red]Erro ({res.status_code}): {res.text[:300]}[/red]")
+                console.print(f"\n[bold red]--- DELETAR de '{tabela}' ---[/bold red]")
+                try:
+                    async with httpx.AsyncClient() as cl:
+                        r = await cl.get(f"{auditor.base_url}{tabela}?select=*", headers=auditor.headers, params={"limit": 20})
+                        rows = r.json()
+                    if not rows or not isinstance(rows, list):
+                        console.print("[red]Nenhum dado encontrado.[/red]")
                     else:
-                        console.print("[yellow]Cancelado.[/yellow]")
+                        id_col = None
+                        for col_name in ["id", "key", "uuid", "uid", "name", "slug"]:
+                            if col_name in rows[0]: id_col = col_name; break
+                        if not id_col: id_col = list(rows[0].keys())[0]
+                        console.print(f"\n[bold yellow]Registros ({len(rows)}):[/bold yellow]")
+                        for ri, row in enumerate(rows, 1):
+                            label = row.get(id_col, "?")
+                            if isinstance(label, dict): label = json.dumps(label)[:60]
+                            extra = ""
+                            for ek in ["name", "email", "status", "key", "title"]:
+                                if ek in row and ek != id_col and row[ek]:
+                                    extra = f" | {ek}={str(row[ek])[:30]}"
+                                    break
+                            console.print(f"  [red][{ri}][/red] {id_col}=[bold]{str(label)[:60]}[/bold]{extra}")
+                        pick = input(f"\nQual deletar? (1-{len(rows)}): ").strip()
+                        if not pick.isdigit() or int(pick) < 1 or int(pick) > len(rows):
+                            console.print("[red]Número inválido.[/red]")
+                        else:
+                            selected = rows[int(pick) - 1]
+                            filtro = f"{id_col}=eq.{selected[id_col]}"
+                            console.print(f"\n[bold red]⚠ ATENÇÃO: Vai deletar de '{tabela}':[/bold red]")
+                            console.print(f"[dim]{json.dumps(selected, ensure_ascii=False, indent=2)[:400]}[/dim]")
+                            confirm = input("\nDigite 'DELETAR' para confirmar: ").strip()
+                            if confirm == "DELETAR":
+                                async with httpx.AsyncClient() as cl2:
+                                    res = await cl2.delete(f"{auditor.base_url}{tabela}?{filtro}", headers=auditor.headers)
+                                if res.status_code in [200, 204]:
+                                    console.print(f"[bold green][+] DELETADO COM SUCESSO! ({res.status_code})[/bold green]")
+                                else:
+                                    console.print(f"[red]Erro ({res.status_code}): {res.text[:300]}[/red]")
+                            else:
+                                console.print("[yellow]Cancelado.[/yellow]")
+                except Exception as e:
+                    console.print(f"[red]Erro: {e}[/red]")
 
         elif c == "9":
             console.print("[dim][*] Tentando login anônimo...[/dim]")
