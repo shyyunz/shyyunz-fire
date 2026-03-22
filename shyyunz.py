@@ -382,13 +382,27 @@ async def fetch_supabase_details(url: str):
         except: return None, None
 
 def prompt_payload():
+    console.print("[dim]  Formato: coluna=valor (uma por linha)[/dim]")
+    console.print("[dim]  Exemplo: name=João    ou    status=paid    ou    age=25[/dim]")
+    console.print("[dim]  Digite 'OK' para enviar ou 'CANCELAR' para sair.[/dim]")
     payload = {}
     while True:
-        c = input("Coluna (ou 'FIM'): ").strip()
-        if not c or c.upper() == "FIM": break
-        v = input(f"Valor para {c}: ").strip()
-        payload[c] = v if not v.isdigit() else int(v)
-    return payload
+        entry = input(f"  [{len(payload)+1}] ").strip()
+        if not entry or entry.upper() == "CANCELAR": 
+            if not payload: return None
+            break
+        if entry.upper() == "OK": break
+        if "=" not in entry:
+            console.print("[red]    Use o formato coluna=valor (ex: status=paid)[/red]")
+            continue
+        parts = entry.split("=", 1)
+        col, val = parts[0].strip(), parts[1].strip()
+        # Tenta converter números
+        if val.isdigit(): val = int(val)
+        elif val.lower() in ["true", "false"]: val = val.lower() == "true"
+        payload[col] = val
+        console.print(f"[green]    ✓ {col} = {val}[/green]")
+    return payload if payload else None
 
 async def audit_routine():
     console.print(Align.center(BRANDED_BANNER))
@@ -474,33 +488,62 @@ async def audit_routine():
         elif c == "6":
             idx = input("Nr. do alvo: ").strip()
             if idx in table_map:
-                console.print("[dim]Informe as colunas e valores para inserir (digite FIM para enviar):[/dim]")
+                tabela = table_map[idx]['name']
+                console.print(f"\n[bold cyan]--- INSERIR DADOS em '{tabela}' ---[/bold cyan]")
                 p = prompt_payload()
                 if p:
-                    async with httpx.AsyncClient() as cl:
-                        res = await cl.post(f"{auditor.base_url}{table_map[idx]['name']}", headers=auditor.headers, json=p)
-                        console.print(f"Resultado ({res.status_code}): {res.text}")
+                    console.print(f"\n[dim]Payload: {json.dumps(p)}[/dim]")
+                    if input("Enviar? (S/N): ").strip().upper() == "S":
+                        async with httpx.AsyncClient() as cl:
+                            res = await cl.post(f"{auditor.base_url}{tabela}", headers=auditor.headers, json=p)
+                            if res.status_code in [200, 201]:
+                                console.print(f"[bold green][+] Inserido com sucesso! ({res.status_code})[/bold green]")
+                            else:
+                                console.print(f"[red]Erro ({res.status_code}): {res.text[:300]}[/red]")
 
         elif c == "7":
             idx = input("Nr. do alvo: ").strip()
-            filtro = input("Filtro (ex: id=eq.1): ").strip()
-            if idx in table_map and filtro:
-                console.print("[dim]Informe as colunas e novos valores (digite FIM para enviar):[/dim]")
-                p = prompt_payload()
-                if p:
-                    async with httpx.AsyncClient() as cl:
-                        res = await cl.patch(f"{auditor.base_url}{table_map[idx]['name']}?{filtro}", headers=auditor.headers, json=p)
-                        console.print(f"Resultado ({res.status_code}): {res.text}")
+            if idx in table_map:
+                tabela = table_map[idx]['name']
+                console.print(f"\n[bold cyan]--- EDITAR DADOS em '{tabela}' ---[/bold cyan]")
+                console.print("[dim]  Passo 1: Identifique QUAL registro editar.[/dim]")
+                console.print("[dim]  Formato do filtro: coluna=eq.valor[/dim]")
+                console.print("[dim]  Exemplos: id=eq.5   ou   email=eq.joao@mail.com   ou   id=eq.152a1da9-ba67-478f[/dim]")
+                filtro = input("\n  Filtro: ").strip()
+                if filtro:
+                    console.print("\n[dim]  Passo 2: Informe os novos valores.[/dim]")
+                    p = prompt_payload()
+                    if p:
+                        console.print(f"\n[dim]Alvo: {tabela} onde {filtro}[/dim]")
+                        console.print(f"[dim]Novos valores: {json.dumps(p)}[/dim]")
+                        if input("Confirmar edição? (S/N): ").strip().upper() == "S":
+                            async with httpx.AsyncClient() as cl:
+                                res = await cl.patch(f"{auditor.base_url}{tabela}?{filtro}", headers=auditor.headers, json=p)
+                                if res.status_code in [200, 204]:
+                                    console.print(f"[bold green][+] Editado com sucesso! ({res.status_code})[/bold green]")
+                                else:
+                                    console.print(f"[red]Erro ({res.status_code}): {res.text[:300]}[/red]")
 
         elif c == "8":
             idx = input("Nr. do alvo: ").strip()
-            filtro = input("Filtro (ex: id=eq.1): ").strip()
-            if idx in table_map and filtro:
-                confirm = input(f"Deletar de '{table_map[idx]['name']}' onde {filtro}? (S/N): ").strip().upper()
-                if confirm == "S":
-                    async with httpx.AsyncClient() as cl:
-                        res = await cl.delete(f"{auditor.base_url}{table_map[idx]['name']}?{filtro}", headers=auditor.headers)
-                        console.print(f"Resultado ({res.status_code}): {res.text}")
+            if idx in table_map:
+                tabela = table_map[idx]['name']
+                console.print(f"\n[bold red]--- DELETAR DADOS de '{tabela}' ---[/bold red]")
+                console.print("[dim]  Formato do filtro: coluna=eq.valor[/dim]")
+                console.print("[dim]  Exemplos: id=eq.5   ou   status=eq.cancelled[/dim]")
+                filtro = input("\n  Filtro: ").strip()
+                if filtro:
+                    console.print(f"\n[bold red]⚠ ATENÇÃO: Isso vai deletar de '{tabela}' onde {filtro}[/bold red]")
+                    confirm = input("Tem certeza? Digite 'DELETAR' para confirmar: ").strip()
+                    if confirm == "DELETAR":
+                        async with httpx.AsyncClient() as cl:
+                            res = await cl.delete(f"{auditor.base_url}{tabela}?{filtro}", headers=auditor.headers)
+                            if res.status_code in [200, 204]:
+                                console.print(f"[bold green][+] Deletado! ({res.status_code})[/bold green]")
+                            else:
+                                console.print(f"[red]Erro ({res.status_code}): {res.text[:300]}[/red]")
+                    else:
+                        console.print("[yellow]Cancelado.[/yellow]")
 
         elif c == "9":
             console.print("[dim][*] Tentando login anônimo...[/dim]")
