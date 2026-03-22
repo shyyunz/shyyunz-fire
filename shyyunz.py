@@ -584,8 +584,14 @@ async def audit_routine():
         summary = Table(title="[bold red]VETORES DE EXPLORAÇÃO SELECIONADOS[/bold red]")
         summary.add_column("Nr."); summary.add_column("Tipo"); summary.add_column("Alvo"); summary.add_column("Leitura"); summary.add_column("Escrita (W/U/D)"); summary.add_column("Risco")
         for idx, r in enumerate(auditor.results, 1):
-            read_st = "[bold green]EXPOSTO[/bold green]" if r.get('readable') else "[yellow]RLS[/yellow]"
-            if r.get('has_data'): read_st += " [red](DADOS)[/red]"
+            if r.get('readable'):
+                if r.get('has_data'):
+                    read_st = "[bold green]EXPOSTO (DADOS)[/bold green]"
+                else:
+                    read_st = "[bold yellow]EXPOSTO (VAZIA)[/bold yellow]"
+            else:
+                read_st = "[dim]RLS BLOQUEADO[/dim]"
+            
             w_v = r.get('write_vulns', {})
             write_st = f"[{'W' if w_v.get('post') else '-'}/{'U' if w_v.get('patch') else '-'}/{'D' if w_v.get('delete') else '-'}]"
             summary.add_row(str(idx), r['type'], r['name'], read_st, f"[bold magenta]{write_st}[/bold magenta]" if any(w_v.values()) else write_st, "[bold red]CRÍTICO[/bold red]" if any(w_v.values()) or r.get('readable') else "[yellow]ALTO[/yellow]")
