@@ -292,10 +292,12 @@ class ShyyunzAuditor:
                     if not readable:
                         rj = await client.get(f"{url}?select=*,auth.users(*)", headers=self.headers, params={"limit": 1})
                         if rj.status_code == 200: readable, bypass = True, "JOIN Inj"
-                        if not readable and brain:
-                            for f in await brain.suggest_filters(target):
-                                rf = await client.get(f"{url}?{f}", headers=self.headers)
-                                if rf.status_code == 200: readable, bypass = True, f"AI ({f})"; break
+                        # Filtros estáticos de bypass (sem gastar cota da IA)
+                        if not readable:
+                            static_filters = ["id=not.eq.0", "limit=1", "id=gte.0", "created_at=not.is.null", "order=id.asc"]
+                            for sf in static_filters:
+                                rf = await client.get(f"{url}?select=*&{sf}", headers=self.headers)
+                                if rf.status_code == 200 and len(rf.text) > 2: readable, bypass = True, f"Bypass ({sf})"; break
                     if readable: 
                         try: 
                             rd = await client.get(f"{url}?select=*", headers=self.headers, params={"limit": 1})
