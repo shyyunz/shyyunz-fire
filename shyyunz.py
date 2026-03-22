@@ -562,12 +562,14 @@ async def audit_routine():
                         
                         changes = {}
                         json_changes = {}
+                        cancelled = False
                         while True:
                             pending = len(changes) + len(json_changes)
                             entry = input(f"  Edição ({pending} alterações): ").strip()
-                            if entry.upper() == "CANCELAR": break
+                            if entry.upper() == "CANCELAR":
+                                cancelled = True; break
                             if not entry or entry.upper() == "OK":
-                                if pending > 0: break  # Tem edições, enviar
+                                if pending > 0: break
                                 console.print("[yellow]Nenhuma edição feita. Digite CANCELAR para sair.[/yellow]")
                                 continue
                             if "=" not in entry:
@@ -582,19 +584,20 @@ async def audit_routine():
                             
                             col, sub_key, old_val = flat_fields[num]
                             if sub_key:
-                                # Campo JSON aninhado
                                 if col not in json_changes:
-                                    json_changes[col] = dict(selected[col])  # copia o JSON original
+                                    json_changes[col] = dict(selected[col])
                                 json_changes[col][sub_key] = new_val
                                 console.print(f"[green]    ✓ {col}.{sub_key}: {str(old_val)[:30]} → {new_val}[/green]")
                             else:
-                                # Campo simples
                                 if new_val.isdigit(): new_val = int(new_val)
                                 elif new_val.lower() in ["true", "false"]: new_val = new_val.lower() == "true"
                                 changes[col] = new_val
                                 console.print(f"[green]    ✓ {col}: {str(old_val)[:30]} → {new_val}[/green]")
                         
-                        # Merge changes
+                        if cancelled:
+                            console.print("[yellow]Edição cancelada.[/yellow]")
+                            continue
+                        
                         payload = {**changes, **json_changes}
                         if not payload:
                             console.print("[yellow]Nenhuma alteração feita.[/yellow]")
