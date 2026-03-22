@@ -561,11 +561,15 @@ async def audit_routine():
                         console.print("[dim]  Digite 'OK' quando terminar ou 'CANCELAR' para sair.[/dim]")
                         
                         changes = {}
-                        json_changes = {}  # Para campos dentro de JSON
+                        json_changes = {}
                         while True:
-                            entry = input(f"  Edição: ").strip()
-                            if not entry or entry.upper() == "CANCELAR": break
-                            if entry.upper() == "OK": break
+                            pending = len(changes) + len(json_changes)
+                            entry = input(f"  Edição ({pending} alterações): ").strip()
+                            if entry.upper() == "CANCELAR": break
+                            if not entry or entry.upper() == "OK":
+                                if pending > 0: break  # Tem edições, enviar
+                                console.print("[yellow]Nenhuma edição feita. Digite CANCELAR para sair.[/yellow]")
+                                continue
                             if "=" not in entry:
                                 console.print("[red]    Formato: numero=novo_valor (ex: 5=11999990000)[/red]")
                                 continue
