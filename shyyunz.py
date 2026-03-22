@@ -126,28 +126,44 @@ class ShyyunzBrain:
     def __init__(self, api_key: str):
         self.client = genai.Client(api_key=api_key)
         self.model_id = 'gemini-2.0-flash'
+        self._call_count = 0
+
+    async def _safe_generate(self, prompt: str, retries: int = 2):
+        """Gera conteúdo com retry automático para erros 429 (rate limit)."""
+        for attempt in range(retries + 1):
+            try:
+                self._call_count += 1
+                # Limita chamadas por minuto: espera 2s entre cada call
+                if self._call_count > 1: await asyncio.sleep(2)
+                response = await asyncio.to_thread(
+                    self.client.models.generate_content,
+                    model=self.model_id, contents=prompt
+                )
+                return response.text
+            except Exception as e:
+                if "429" in str(e) and attempt < retries:
+                    wait = 10 * (attempt + 1)
+                    console.print(f"[dim][IA] Limite atingido, aguardando {wait}s...[/dim]")
+                    await asyncio.sleep(wait)
+                else:
+                    raise e
+        return None
 
     async def analyze_data(self, table_name: str, data: List[Dict]):
         if not data: return "Nenhum dado para analisar."
         sample = json.dumps(data[:10], indent=2)
         prompt = f"Analise este DUMP da tabela '{table_name}'. Identifique Dados Sensíveis, Nível de Impacto e Dicas de Exploração. Responda em PT-BR.\n\n{sample}"
         try:
-            response = await asyncio.to_thread(
-                self.client.models.generate_content,
-                model=self.model_id, contents=prompt
-            )
-            return response.text
+            return await self._safe_generate(prompt)
         except Exception as e: return f"[red]Erro IA: {e}[/red]"
 
     async def suggest_filters(self, table_name: str) -> List[str]:
         prompt = f"Sugira 3 filtros PostgREST (ex: id=not.eq.0) para burlar RLS na tabela '{table_name}'. Apenas os filtros separados por vírgula."
         try:
-            response = await asyncio.to_thread(
-                self.client.models.generate_content,
-                model=self.model_id, contents=prompt
-            )
-            return [f.strip() for f in response.text.split(",") if "=" in f]
-        except: return ["id=not.eq.0", "limit=1"]
+            text = await self._safe_generate(prompt, retries=1)
+            if text: return [f.strip() for f in text.split(",") if "=" in f]
+        except: pass
+        return ["id=not.eq.0", "limit=1"]
 
 class ShyyunzAuditor:
     def __init__(self, target: str, apikey: str, bearer: Optional[str] = None):
