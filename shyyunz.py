@@ -5,7 +5,7 @@ import json
 import re
 import time
 import base64
-from google import genai
+from openai import OpenAI
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -108,14 +108,14 @@ class ConfigManager:
         except: pass
 
     def get_api_key(self):
-        key = self.config.get("gemini_api_key")
-        # Validação simples de formato Gemini (começa com AIzaSy)
-        if key and key.startswith("AIzaSy"): return key
+        key = self.config.get("ai_api_key")
+        if key and (key.startswith("sk-") or key.startswith("AIzaSy")): return key
         return None
 
     def set_api_key(self, key: str):
-        if key.startswith("AIzaSy"):
-            self.config["gemini_api_key"] = key.strip()
+        key = key.strip()
+        if key.startswith("sk-") or key.startswith("AIzaSy"):
+            self.config["ai_api_key"] = key
             self.save()
             return True
         return False
@@ -124,46 +124,46 @@ sh_config = ConfigManager()
 
 class ShyyunzBrain:
     def __init__(self, api_key: str):
-        self.client = genai.Client(api_key=api_key)
-        self.model_id = 'gemini-2.0-flash'
-        self._call_count = 0
+        self.client = OpenAI(api_key=api_key)
+        self.model = 'gpt-4o-mini'
 
-    async def _safe_generate(self, prompt: str, retries: int = 2):
-        """Gera conteúdo com retry automático para erros 429 (rate limit)."""
-        for attempt in range(retries + 1):
-            try:
-                self._call_count += 1
-                # Limita chamadas por minuto: espera 2s entre cada call
-                if self._call_count > 1: await asyncio.sleep(2)
+    async def _chat(self, prompt: str) -> str:
+        """Envia prompt para a OpenAI com retry para rate limits."""
+        try:
+            response = await asyncio.to_thread(
+                self.client.chat.completions.create,
+                model=self.model,
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=1000
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            if "429" in str(e):
+                console.print("[dim][IA] Rate limit, aguardando 5s...[/dim]")
+                await asyncio.sleep(5)
                 response = await asyncio.to_thread(
-                    self.client.models.generate_content,
-                    model=self.model_id, contents=prompt
+                    self.client.chat.completions.create,
+                    model=self.model,
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=1000
                 )
-                return response.text
-            except Exception as e:
-                if "429" in str(e) and attempt < retries:
-                    wait = 10 * (attempt + 1)
-                    console.print(f"[dim][IA] Limite atingido, aguardando {wait}s...[/dim]")
-                    await asyncio.sleep(wait)
-                else:
-                    raise e
-        return None
+                return response.choices[0].message.content
+            raise e
 
     async def analyze_data(self, table_name: str, data: List[Dict]):
         if not data: return "Nenhum dado para analisar."
         sample = json.dumps(data[:10], indent=2)
-        prompt = f"Analise este DUMP da tabela '{table_name}'. Identifique Dados Sensíveis, Nível de Impacto e Dicas de Exploração. Responda em PT-BR.\n\n{sample}"
+        prompt = f"Você é o Cérebro Analítico da SHYYUNZ SEC. Analise este DUMP da tabela '{table_name}'. Identifique:\n1. Dados Sensíveis (Senhas, Hashes, Tokens, E-mails de Admins)\n2. Nível de Impacto (Baixo, Médio, Crítico)\n3. Recomendações de Exploração\nResponda em PORTUGUÊS BRASIL.\n\nDADOS:\n{sample}"
         try:
-            return await self._safe_generate(prompt)
+            return await self._chat(prompt)
         except Exception as e: return f"[red]Erro IA: {e}[/red]"
 
     async def suggest_filters(self, table_name: str) -> List[str]:
-        prompt = f"Sugira 3 filtros PostgREST (ex: id=not.eq.0) para burlar RLS na tabela '{table_name}'. Apenas os filtros separados por vírgula."
+        prompt = f"Sugira 3 filtros PostgREST para burlar RLS na tabela '{table_name}'. Apenas os filtros separados por vírgula, sem explicação."
         try:
-            text = await self._safe_generate(prompt, retries=1)
-            if text: return [f.strip() for f in text.split(",") if "=" in f]
-        except: pass
-        return ["id=not.eq.0", "limit=1"]
+            text = await self._chat(prompt)
+            return [f.strip() for f in text.split(",") if "=" in f]
+        except: return ["id=not.eq.0", "limit=1"]
 
 class ShyyunzAuditor:
     def __init__(self, target: str, apikey: str, bearer: Optional[str] = None):
@@ -549,7 +549,7 @@ async def audit_routine():
             if opt == "1":
                 console.print(Panel(json.dumps(knowledge.data, indent=2), title="Conhecimento Acumulado"))
             elif opt == "2":
-                new_key = input("Nova Gemini API Key: ").strip()
+                new_key = input("Nova API Key (sk-...): ").strip()
                 if sh_config.set_api_key(new_key):
                     console.print("[green][+] Chave atualizada com sucesso![/green]")
                 else:
@@ -562,29 +562,26 @@ async def audit_routine():
             console.print("[yellow]Comando não reconhecido.[/yellow]")
 
 async def main():
-    # Verificação Inicial Inteligente de API Key
     while not sh_config.get_api_key():
         console.clear()
         console.print(Align.center(BANNER))
         console.print(Panel(
-            "[bold yellow]SUPABASE AUDITOR v8.0 - SHADOW OPS SETUP[/bold yellow]\n\n"
+            "[bold yellow]SHYYUNZ v8.0 - SHADOW OPS SETUP[/bold yellow]\n\n"
             "O [bold magenta]Cérebro Analítico (IA)[/bold magenta] está desativado.\n"
-            "Para ativar, insira sua [bold cyan]Gemini API Key[/bold cyan].\n\n"
-            "[dim]A chave será salva de forma oculta em: {sh_config.filename}[/dim]",
-            title="Initial Configuration"
+            "Insira sua [bold cyan]OpenAI API Key[/bold cyan] (começa com sk-...).\n\n"
+            "[dim]A chave será salva localmente e nunca compartilhada.[/dim]",
+            title="Configuração Inicial"
         ))
-        key = console.input("\n[bold cyan][🧠 SHY_CONFIG][/bold cyan] Insira API Key (começa com AIzaSy...) ou 'SAIR' p/ ignorar: ").strip()
-        
-        if key.upper() == "SAIR": 
-            console.print("[yellow][!] Aviso: O Scan rodará sem inteligência artificial.[/yellow]")
-            time.sleep(2); break
-            
-        if sh_config.set_api_key(key):
-            console.print("[bold green][+] Chave validada e salva com sucesso![/bold green]")
+        key = console.input("\n[bold cyan][🧠 CONFIG][/bold cyan] API Key (sk-...) ou 'SAIR' p/ ignorar: ").strip()
+        if key.upper() == "SAIR":
+            console.print("[yellow][!] Scan rodará sem IA.[/yellow]")
             time.sleep(1.5); break
+        if sh_config.set_api_key(key):
+            console.print("[bold green][+] Chave salva com sucesso![/bold green]")
+            time.sleep(1); break
         else:
-            console.print("[bold red][!] ERRO: Chave inválida. Chaves Gemini devem começar com 'AIzaSy'.[/bold red]")
-            time.sleep(2.5)
+            console.print("[bold red][!] Chave inválida. Deve começar com 'sk-'.[/bold red]")
+            time.sleep(2)
 
     while True:
         if not await audit_routine(): break
