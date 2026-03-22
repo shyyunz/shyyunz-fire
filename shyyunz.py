@@ -542,8 +542,12 @@ async def audit_routine():
         target, apikey = await fetch_supabase_details(site_url)
         if not target or not apikey:
             console.print("[yellow][!] Não foi possível extrair Supabase URL/Key automaticamente.[/yellow]")
-            if not target: target = console.input("[bold cyan][🌐 SHY_SEC][/bold cyan] Informe URL/ID do Projeto Manualmente: ").strip()
-            if not apikey: apikey = console.input("[bold cyan][🔑 SHY_SEC][/bold cyan] Informe Supabase API Key Manualmente:   ").strip()
+            if not target: 
+                target = console.input("[bold cyan][🌐 SHY_SEC][/bold cyan] Informe URL do Projeto (ou Enter/0 p/ Cancelar): ").strip()
+                if not target or target in ["0", "exit", "sair"]: return True
+            if not apikey: 
+                apikey = console.input("[bold cyan][🔑 SHY_SEC][/bold cyan] Informe Supabase API Key (ou Enter/0 p/ Cancelar): ").strip()
+                if not apikey or apikey in ["0", "exit", "sair"]: return True
         
         auditor = ShyyunzAuditor(target, apikey, bearer if bearer else None)
         
