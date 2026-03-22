@@ -602,10 +602,21 @@ async def audit_routine():
                                     console.print(f"[dim]Dados: {json.dumps(payload, ensure_ascii=False)}[/dim]")
                                     ok = input("\nConfirmar? (S/N): ").strip().upper()
                                     if ok == "S":
+                                        patch_headers = {**auditor.headers, "Prefer": "return=representation"}
                                         async with httpx.AsyncClient() as cl2:
-                                            res = await cl2.patch(f"{auditor.base_url}{tabela}?{filtro}", headers=auditor.headers, json=payload)
-                                        if res.status_code in [200, 204]:
-                                            console.print(f"[bold green][+] EDITADO COM SUCESSO! ({res.status_code})[/bold green]")
+                                            res = await cl2.patch(f"{auditor.base_url}{tabela}?{filtro}", headers=patch_headers, json=payload)
+                                        if res.status_code in [200, 201]:
+                                            body = res.json() if res.text else []
+                                            if body:
+                                                console.print(f"[bold green][+] EDITADO COM SUCESSO! ({res.status_code}) - {len(body)} registro(s) alterado(s)[/bold green]")
+                                                console.print(f"[dim]Resposta: {json.dumps(body[0] if isinstance(body, list) else body, ensure_ascii=False)[:300]}[/dim]")
+                                            else:
+                                                console.print(f"[bold red][!] PATCH retornou {res.status_code} mas NENHUM registro foi alterado![/bold red]")
+                                                console.print("[yellow]    Possível causa: RLS (Row Level Security) bloqueou a escrita.[/yellow]")
+                                                console.print("[yellow]    Tente criar uma conta e logar primeiro (opção [3]).[/yellow]")
+                                        elif res.status_code == 204:
+                                            console.print(f"[yellow][!] Servidor retornou 204 (sem corpo). Não é possível confirmar se alterou.[/yellow]")
+                                            console.print("[dim]    Use [1] Ver Dados para verificar manualmente.[/dim]")
                                         else:
                                             console.print(f"[red]Erro ({res.status_code}): {res.text[:300]}[/red]")
                                     else:
