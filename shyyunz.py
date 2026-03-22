@@ -358,28 +358,54 @@ class ShyyunzAuditor:
 
 async def fetch_supabase_details(url: str):
     if not url.startswith("http"): url = "https://" + url
-    async with httpx.AsyncClient(headers={'User-Agent': random.choice(USER_AGENTS)}, timeout=15.0, follow_redirects=True, verify=False) as client:
+    for attempt in range(2):  # Retry uma vez se falhar
         try:
-            console.print(f"[dim][*] Analisando: {url}...[/dim]")
-            r = await client.get(url); html = r.text
-            scripts = re.findall(r'<script.*?src=["\'](.*?\.js.*?)["\']', html)
-            js_urls = [urljoin(url, s) for s in scripts] + [urljoin(url, p) for p in ["js/config.js", "config.js", "supabase.js"]]
-            u_p = r'https://[a-z0-9\-]+\.supabase\.(co|net)'
-            k_p = r'(eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.[a-zA-Z0-9.\-_]{50,}|sb_publishable_[a-zA-Z0-9\-_]{20,}|pk_[a-zA-Z0-9\-_]{20,})'
-            t, k = re.search(u_p, html), re.search(k_p, html)
-            target = t.group(0) if t else None; apikey = k.group(0) if k else None
-            if not target or not apikey:
-                for j in list(set(js_urls)):
-                    try:
-                        jr = await client.get(j, timeout=5.0)
-                        if jr.status_code == 200:
-                            if not target: mt = re.search(u_p, jr.text); target = mt.group(0) if mt else None
-                            if not apikey: mk = re.search(k_p, jr.text); apikey = mk.group(0) if mk else None
-                            if target and apikey: break
-                    except: continue
-            if target and apikey: console.print(f"[bold green][+] Supabase Detectado: {target}[/bold green]"); return target, apikey
-            return None, None
-        except: return None, None
+            async with httpx.AsyncClient(headers={'User-Agent': random.choice(USER_AGENTS)}, timeout=15.0, follow_redirects=True, verify=False) as client:
+                console.print(f"[dim][*] Analisando: {url}...[/dim]")
+                r = await client.get(url)
+                if r.status_code != 200:
+                    console.print(f"[dim][!] Status {r.status_code}, tentando novamente...[/dim]")
+                    await asyncio.sleep(2)
+                    continue
+                html = r.text
+                # Captura <script src="..."> E <link rel="modulepreload" href="...">
+                scripts = re.findall(r'<script[^>]*?src=["\'](.*?\.js[^"\']*)["\']', html)
+                preloads = re.findall(r'<link[^>]*?rel=["\']modulepreload["\'][^>]*?href=["\'](.*?\.js[^"\']*)["\']', html)
+                js_urls = list(set(
+                    [urljoin(url, s) for s in scripts + preloads] +
+                    [urljoin(url, p) for p in ["js/config.js", "config.js", "supabase.js"]]
+                ))
+                u_p = r'https://[a-z0-9\-]+\.supabase\.(co|net)'
+                k_p = r'(eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.[a-zA-Z0-9.\-_]{50,}|sb_publishable_[a-zA-Z0-9\-_]{20,}|pk_[a-zA-Z0-9\-_]{20,})'
+                t = re.search(u_p, html)
+                k = re.search(k_p, html)
+                target = t.group(0) if t else None
+                apikey = k.group(0) if k else None
+                if not target or not apikey:
+                    for j in js_urls:
+                        try:
+                            jr = await client.get(j, timeout=8.0)
+                            if jr.status_code == 200 and len(jr.text) > 100:
+                                if not target:
+                                    mt = re.search(u_p, jr.text)
+                                    target = mt.group(0) if mt else None
+                                if not apikey:
+                                    mk = re.search(k_p, jr.text)
+                                    apikey = mk.group(0) if mk else None
+                                if target and apikey: break
+                        except: continue
+                if target and apikey:
+                    console.print(f"[bold green][+] Supabase Detectado: {target}[/bold green]")
+                    return target, apikey
+                elif attempt == 0:
+                    console.print("[dim][!] Detecção parcial, tentando novamente...[/dim]")
+                    await asyncio.sleep(1)
+        except Exception as e:
+            if attempt == 0:
+                console.print(f"[dim][!] Erro de rede ({e}), tentando novamente...[/dim]")
+                await asyncio.sleep(2)
+    console.print("[yellow][!] Detecção automática falhou.[/yellow]")
+    return None, None
 
 def prompt_payload():
     console.print("[dim]  Formato: coluna=valor (uma por linha)[/dim]")
