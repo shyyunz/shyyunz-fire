@@ -5,7 +5,7 @@ import json
 import re
 import time
 import base64
-from google import genai
+import google.generativeai as genai
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -124,24 +124,25 @@ sh_config = ConfigManager()
 
 class ShyyunzBrain:
     def __init__(self, api_key: str):
-        # Inicializa o cliente genai v1 para maior compatibilidade
-        self.client = genai.Client(api_key=api_key, http_options={'api_version': 'v1'})
-        self.model_id = 'gemini-1.5-flash'
+        # Usa o pacote google-generativeai para maior estabilidade
+        genai.configure(api_key=api_key)
+        self.model = genai.GenerativeModel('gemini-1.5-flash')
 
     async def analyze_data(self, table_name: str, data: List[Dict]):
         if not data: return "Nenhum dado para analisar."
         sample = json.dumps(data[:10], indent=2)
         prompt = f"Analise este DUMP da tabela '{table_name}'. Identifique Dados Sensíveis, Nível de Impacto e Dicas de Exploração. Responda em PT-BR.\n\n{sample}"
         try:
-            res = self.client.models.generate_content(model=self.model_id, contents=prompt)
-            return res.text
+            # Roda síncrono em thread para não travar o loop async
+            response = await asyncio.to_thread(self.model.generate_content, prompt)
+            return response.text
         except Exception as e: return f"[red]Erro IA (Iniciando modo de compatibilidade...): {e}[/red]"
 
     async def suggest_filters(self, table_name: str) -> List[str]:
         prompt = f"Sugira 3 filtros PostgREST (ex: id=not.eq.0) para burlar RLS na tabela '{table_name}'. Apenas os filtros separados por vírgula."
         try:
-            res = self.client.models.generate_content(model=self.model_id, contents=prompt)
-            return [f.strip() for f in res.text.split(",") if "=" in f]
+            response = await asyncio.to_thread(self.model.generate_content, prompt)
+            return [f.strip() for f in response.text.split(",") if "=" in f]
         except: return ["id=not.eq.0", "limit=1"]
 
 class ShyyunzAuditor:
