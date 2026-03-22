@@ -18,6 +18,8 @@ import string
 import sys
 from typing import List, Optional, Set, Dict
 from urllib.parse import urljoin
+import warnings
+warnings.filterwarnings("ignore")
 
 
 # --- CONFIGURAÇÃO VISUAL SHYYUNZ SEC ---
