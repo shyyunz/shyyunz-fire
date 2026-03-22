@@ -5,7 +5,7 @@ import json
 import re
 import time
 import base64
-import google.generativeai as genai
+from google import genai
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -102,8 +102,7 @@ knowledge = KnowledgeManager()
 class ShyyunzBrain:
     """Cérebro Analítico: Usa Gemini para minerar dados sensíveis em Dumps."""
     def __init__(self, api_key: str):
-        genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel('gemini-1.5-flash')
+        self.client = genai.Client(api_key=api_key)
 
     async def analyze_data(self, table_name: str, data: List[Dict]):
         if not data: return "Nenhum dado para analisar."
@@ -123,7 +122,10 @@ class ShyyunzBrain:
         {sample}
         """
         try:
-            response = self.model.generate_content(prompt)
+            response = self.client.models.generate_content(
+                model='gemini-1.5-flash',
+                contents=prompt
+            )
             return response.text
         except Exception as e:
             return f"[red][!] Erro no Cérebro Analítico: {e}[/red]"
