@@ -806,4 +806,7 @@ async def main():
         if not await audit_routine(): break
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except (KeyboardInterrupt, EOFError):
+        console.print("\n[bold cyan]👋 Shyyunz encerrado.[/bold cyan]")
