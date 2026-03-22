@@ -434,6 +434,11 @@ async def audit_routine():
     console.print(Align.center(BRANDED_BANNER))
     console.print(Align.center(Panel.fit("[bold magenta]SUPABASE AUDITOR v8.0 - SHADOW OPS[/bold magenta]", border_style="cyan")))
     site_url = console.input("\n[bold cyan][🌐 SHY_SEC] URL:[/bold cyan] ").strip()
+    
+    # Sanitização: Remove caracteres de controle (como ^H/\x08) e conserta "https://https://"
+    site_url = "".join(ch for ch in site_url if ch.isprintable())
+    site_url = site_url.replace("https://https://", "https://").replace("http://http://", "http://")
+    
     if site_url.lower() in ["0", "sair", "exit"]: return False
     target, apikey = await fetch_supabase_details(site_url)
     
