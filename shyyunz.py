@@ -443,7 +443,22 @@ async def audit_routine():
     if not target or not apikey:
         target = input("URL Supabase: ").strip(); apikey = input("API Key: ").strip()
         if not target or not apikey: return True
-    auditor = ShyyunzAuditor(target, apikey)
+    
+    # Prompt opcional de Bearer Authentication
+    console.print(f"\n[bold green][+] Alvo: {target}[/bold green]")
+    bearer_token = None
+    use_bearer = input("[🔑] Adicionar Bearer Token? (S/N): ").strip().upper()
+    if use_bearer == "S":
+        bearer_token = input("[🔑] Bearer Token (JWT): ").strip()
+        if bearer_token:
+            console.print(f"[bold green][+] Autenticado! Token: {bearer_token[:20]}...{bearer_token[-10:]}[/bold green]")
+        else:
+            console.print("[dim]Token vazio, rodando sem autenticação.[/dim]")
+            bearer_token = None
+    else:
+        console.print("[dim]Rodando scan sem autenticação extra.[/dim]")
+    
+    auditor = ShyyunzAuditor(target, apikey, bearer_token)
     await auditor.pre_scan_auth_check(); await auditor.perform_intelligence_gathering()
     words = list(set(["users", "profiles", "accounts", "admins", "settings", "orders", "config", "roles", "secrets", "api_keys", "payments", "logs"] + list(auditor.graphql_discovered) + knowledge.data["tables"]))
     await auditor.run_scan(words, brain)
