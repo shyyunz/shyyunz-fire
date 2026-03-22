@@ -88,6 +88,33 @@ class KnowledgeManager:
 
 knowledge = KnowledgeManager()
 
+class ConfigManager:
+    """Gerencia as configurações locais do usuário (API Keys, etc)."""
+    def __init__(self, filename=".sh_config.json"):
+        self.filename = filename
+        self.config = self.load()
+
+    def load(self):
+        if os.path.exists(self.filename):
+            try:
+                with open(self.filename, "r") as f: return json.load(f)
+            except: pass
+        return {"gemini_api_key": None}
+
+    def save(self):
+        try:
+            with open(self.filename, "w") as f: json.dump(self.config, f, indent=2)
+        except: pass
+
+    def get_api_key(self):
+        return self.config.get("gemini_api_key")
+
+    def set_api_key(self, key: str):
+        self.config["gemini_api_key"] = key.strip()
+        self.save()
+
+sh_config = ConfigManager()
+
 class ShyyunzBrain:
     def __init__(self, api_key: str):
         self.client = genai.Client(api_key=api_key)
@@ -296,10 +323,13 @@ def prompt_payload():
 async def audit_routine():
     console.print(Align.center(BRANDED_BANNER))
     console.print(Align.center(Panel.fit("[bold magenta]SUPABASE AUDITOR v8.0 - SHADOW OPS[/bold magenta]", border_style="cyan")))
-    url = console.input("\n[🌐 SHY_SEC] URL: ").strip()
-    if url.lower() in ["0", "sair", "exit"]: return False
-    target, apikey = await fetch_supabase_details(url)
-    brain = ShyyunzBrain("AIzaSyDTyiNk3xvtuNVETIve2UoI1D6VWj605K0")
+    site_url = console.input("\n[bold cyan][🌐 SHY_SEC] URL:[/bold cyan] ").strip()
+    if site_url.lower() in ["0", "sair", "exit"]: return False
+    target, apikey = await fetch_supabase_details(site_url)
+    
+    ai_key = sh_config.get_api_key()
+    brain = ShyyunzBrain(ai_key) if ai_key else None
+    
     if not target or not apikey:
         target = input("URL Supabase: ").strip(); apikey = input("API Key: ").strip()
         if not target or not apikey: return True
@@ -341,7 +371,13 @@ async def audit_routine():
                     if r.get('readable'):
                         resp = await client.get(f"{auditor.base_url}{r['name']}?select=*", headers=auditor.headers)
                         with open(f"{out}/{r['name']}.json", "w") as f: f.write(json.dumps(resp.json()))
-            console.print(f"[bold green][+] Salvo em {out}/[/bold green]")
+            console.print(Panel(f"Arquivos salvos em {out}/", title="Exfiltração"))
+        elif c == "K":
+            opt = input("\n[1] Ver Conhecimento [2] Trocar API Key Gemini: ").strip()
+            if opt == "1": console.print(Panel(json.dumps(knowledge.data, indent=2), title="Conhecimento"))
+            elif opt == "2":
+                new_key = input("Nova Gemini API Key: ").strip()
+                if new_key: sh_config.set_api_key(new_key); console.print("[green]Configuração salva![/green]")
         elif c == "6":
             idx = input("Nr: ").strip()
             if idx in table_map:
@@ -370,6 +406,13 @@ async def audit_routine():
         elif c == "K": console.print(Panel(json.dumps(knowledge.data, indent=2), title="Conhecimento"))
 
 async def main():
+    # Verificação Inicial de API Key
+    if not sh_config.get_api_key():
+        console.print(Align.center(BANNER))
+        console.print(Panel("[bold yellow]SUPABASE AUDITOR v8.0 - PRIMEIRA EXECUÇÃO[/bold yellow]\n\nPara ativar o Cérebro Analítico (IA), insira sua Gemini API Key.\nVocê pode obter uma em: [underline]https://aistudio.google.com/app/apikey[/underline]", title="Shadow Ops Setup"))
+        key = console.input("\n[bold cyan][🧠 SHY_CONFIG][/bold cyan] Insira sua Gemini API Key: ").strip()
+        if key: sh_config.set_api_key(key)
+
     while True:
         if not await audit_routine(): break
 
