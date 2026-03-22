@@ -39,26 +39,25 @@ BANNER = """
 
 BRANDED_BANNER = """
 [bold cyan]
-                      .                                            .
-                    .n                   .                 .      n.
-              .   .dP                  dP                   9b.    9b.   .
-             4    qXb         .       dX                     Xb    dX    t
-            dX    9Xb      .dXb    __                         Xb    9dX    b
-            9b     9Xb  ._dXdP" ._ dP"                        9Xb    9Xb   dX
-             dXb    9Xb dP"   _, dP"                           9Xb    9Xb dP"
-              9Xb    9Xb     dP" dP"                            9Xb    dX dP"
-               9Xb    9Xb   dP" dP"       _                      9Xb  dP dP"
-                9Xb    9Xb dP" dP"     _ dP"                      9Xb dP"
-                 9Xb    9Xb   dP"   _ dP"                          9Xb" 
-                  9Xb    9Xb dP" _ dP"                              9Xb
-                   9Xb    9Xb   dP"                                  9Xb
-                    9Xb    9Xb dP"          [bold white]SHYYUNZ SEC[/bold white]               9Xb
-                     9Xb    9Xb"            [dim]v5.0 - Dragon Edition[/dim]           9Xb
-                      9Xb    9Xb                                             9Xb
-                       9Xb    9Xb                                             9Xb
-                        9Xb    9Xb                                             9Xb
+                  ___====-_  _-====___
+            _--^^^#####//      \\#####^^^--_
+         _-^##########// (    ) \\##########^-_
+        -############//  |\^^/|  \\############-
+      _/############//   (@::@)   \\############\_
+     /#############((     \\//     ))#############\
+    -###############\\    (oo)    //###############-
+   -#################\\  / VV \  //#################-
+  -###################\\/      \//###################-
+ _#/|##########/\######(   /\   )######/\##########|\#_
+ |/ |#/\#/\#/\/  \#/\##\  |  |  /#/\#/  \/\#/\#/\#| \|
+ `  |/  V  V  `   V  \# \ |  | / #/  V   '  V  V  \|  '
+    `   `  `      `   /  \_|  |_/  \   '      '  '   '
+                     /            \\
+                    |   [bold white]SHYYUNZ SEC[/bold white]   |
+                     \____________/
 [/bold cyan]
 """
+
 
 
 
