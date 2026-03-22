@@ -33,9 +33,33 @@ BANNER = """
 ╚═════╝ ╚═╝  ╚═╝   ╚═╝      ╚═╝   ╚═╝  ╚═══╝╚══════╝
 [/bold cyan][bold magenta] ╔═════════════════════════════════════════════════════╗
  ║ [bold white]SHYYUNZ SEC - SUPABASE v5.0[/bold white]       ║
- ║ [dim]Advanced Detection & Proxy Rotation[/dim]       ║
+ ║ [bold cyan]Intelligence & Advanced Stealth[/bold cyan]     ║
  ╚═════════════════════════════════════════════════════╝[/bold magenta]
 """
+
+BRANDED_BANNER = """
+[bold cyan]
+                      .                                            .
+                    .n                   .                 .      n.
+              .   .dP                  dP                   9b.    9b.   .
+             4    qXb         .       dX                     Xb    dX    t
+            dX    9Xb      .dXb    __                         Xb    9dX    b
+            9b     9Xb  ._dXdP" ._ dP"                        9Xb    9Xb   dX
+             dXb    9Xb dP"   _, dP"                           9Xb    9Xb dP"
+              9Xb    9Xb     dP" dP"                            9Xb    dX dP"
+               9Xb    9Xb   dP" dP"       _                      9Xb  dP dP"
+                9Xb    9Xb dP" dP"     _ dP"                      9Xb dP"
+                 9Xb    9Xb   dP"   _ dP"                          9Xb" 
+                  9Xb    9Xb dP" _ dP"                              9Xb
+                   9Xb    9Xb   dP"                                  9Xb
+                    9Xb    9Xb dP"          [bold white]SHYYUNZ SEC[/bold white]               9Xb
+                     9Xb    9Xb"            [dim]v5.0 - Dragon Edition[/dim]           9Xb
+                      9Xb    9Xb                                             9Xb
+                       9Xb    9Xb                                             9Xb
+                        9Xb    9Xb                                             9Xb
+[/bold cyan]
+"""
+
 
 
 USER_AGENTS = [
@@ -507,18 +531,19 @@ async def fetch_supabase_details(url: str):
 
 
 async def audit_routine():
-    console.print(Align.center(BANNER))
+    console.print(Align.center(BRANDED_BANNER))
+    console.print(Align.center(Panel.fit("[bold magenta]SUPABASE AUDITOR PRO[/bold magenta]", border_style="cyan")))
     try:
-        site_url = input("\n[SHYYUNZ_SEC] URL do Site Alvo: ").strip()
+        site_url = input("\n[bold cyan][🌐 SHY_SEC][/bold cyan] URL do Site Alvo: ").strip()
         if site_url.lower() in ["exit", "sair", "0"]: return False
         
+        bearer = input("[bold cyan][🔑 SHY_SEC][/bold cyan] API Bearer (Opcional): ").strip()
         target, apikey = await fetch_supabase_details(site_url)
         if not target or not apikey:
             console.print("[yellow][!] Não foi possível extrair Supabase URL/Key automaticamente.[/yellow]")
-            if not target: target = input("[SHYYUNZ_SEC] Informe URL/ID do Projeto Manualmente: ").strip()
-            if not apikey: apikey = input("[SHYYUNZ_SEC] Informe Supabase API Key Manualmente:   ").strip()
+            if not target: target = input("[bold cyan][🌐 SHY_SEC][/bold cyan] Informe URL/ID do Projeto Manualmente: ").strip()
+            if not apikey: apikey = input("[bold cyan][🔑 SHY_SEC][/bold cyan] Informe Supabase API Key Manualmente:   ").strip()
         
-        bearer = input("[SHYYUNZ_SEC] API Bearer (Opcional): ").strip()
         auditor = ShyyunzAuditor(target, apikey, bearer if bearer else None)
         
         # Reconhecimento Adicional V3.0
@@ -567,8 +592,6 @@ async def audit_routine():
         console.print(summary)
         
         while True:
-            console.print("\n[bold cyan]DASHBOARD DE EXPLORAÇÃO V8.7:[/bold cyan]")
-            console.print("[1] Ler Tabela           [2] DUMP Tabelas Populadas")
             console.print("[3] Sign-Up Interativo   [4] Listar Buckets Storage")
             console.print("[6] Inserir Dados (POST) [7] Editar Dados (PATCH)")
             console.print("[8] Excluir Dados (DEL)  [9] Anonymous Login (Bypass Email)")
