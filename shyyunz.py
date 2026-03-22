@@ -535,15 +535,15 @@ async def audit_routine():
     console.print(Align.center(BRANDED_BANNER))
     console.print(Align.center(Panel.fit("[bold magenta]SUPABASE AUDITOR PRO[/bold magenta]", border_style="cyan")))
     try:
-        site_url = input("\n[bold cyan][🌐 SHY_SEC][/bold cyan] URL do Site Alvo: ").strip()
+        site_url = console.input("\n[bold cyan][🌐 SHY_SEC][/bold cyan] URL do Site Alvo: ").strip()
         if site_url.lower() in ["exit", "sair", "0"]: return False
         
-        bearer = input("[bold cyan][🔑 SHY_SEC][/bold cyan] API Bearer (Opcional): ").strip()
+        bearer = console.input("[bold cyan][🔑 SHY_SEC][/bold cyan] API Bearer (Opcional): ").strip()
         target, apikey = await fetch_supabase_details(site_url)
         if not target or not apikey:
             console.print("[yellow][!] Não foi possível extrair Supabase URL/Key automaticamente.[/yellow]")
-            if not target: target = input("[bold cyan][🌐 SHY_SEC][/bold cyan] Informe URL/ID do Projeto Manualmente: ").strip()
-            if not apikey: apikey = input("[bold cyan][🔑 SHY_SEC][/bold cyan] Informe Supabase API Key Manualmente:   ").strip()
+            if not target: target = console.input("[bold cyan][🌐 SHY_SEC][/bold cyan] Informe URL/ID do Projeto Manualmente: ").strip()
+            if not apikey: apikey = console.input("[bold cyan][🔑 SHY_SEC][/bold cyan] Informe Supabase API Key Manualmente:   ").strip()
         
         auditor = ShyyunzAuditor(target, apikey, bearer if bearer else None)
         
@@ -606,7 +606,7 @@ async def audit_routine():
             elif c == "K":
                 console.print(Panel(json.dumps(knowledge.data, indent=2), title="Cérebro da Shyyunz", border_style="green"))
             elif c == "L":
-                idx = input("Nr. do Alvo para Monitorar: ").strip()
+                idx = console.input("Nr. do Alvo para Monitorar: ").strip()
                 if idx in table_map:
                     t_name = table_map[idx]['name']
                     console.print(f"[bold red][*] Iniciando Sniffer Realtime (Polling 5s) em {t_name}...[/bold red]")
