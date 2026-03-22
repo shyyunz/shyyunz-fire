@@ -505,24 +505,107 @@ async def audit_routine():
             idx = input("Nr. do alvo: ").strip()
             if idx in table_map:
                 tabela = table_map[idx]['name']
-                console.print(f"\n[bold cyan]--- EDITAR DADOS em '{tabela}' ---[/bold cyan]")
-                console.print("[dim]  Passo 1: Identifique QUAL registro editar.[/dim]")
-                console.print("[dim]  Formato do filtro: coluna=eq.valor[/dim]")
-                console.print("[dim]  Exemplos: id=eq.5   ou   email=eq.joao@mail.com   ou   id=eq.152a1da9-ba67-478f[/dim]")
-                filtro = input("\n  Filtro: ").strip()
-                if filtro:
-                    console.print("\n[dim]  Passo 2: Informe os novos valores.[/dim]")
-                    p = prompt_payload()
-                    if p:
-                        console.print(f"\n[dim]Alvo: {tabela} onde {filtro}[/dim]")
-                        console.print(f"[dim]Novos valores: {json.dumps(p)}[/dim]")
-                        if input("Confirmar edição? (S/N): ").strip().upper() == "S":
-                            async with httpx.AsyncClient() as cl:
-                                res = await cl.patch(f"{auditor.base_url}{tabela}?{filtro}", headers=auditor.headers, json=p)
-                                if res.status_code in [200, 204]:
-                                    console.print(f"[bold green][+] Editado com sucesso! ({res.status_code})[/bold green]")
-                                else:
-                                    console.print(f"[red]Erro ({res.status_code}): {res.text[:300]}[/red]")
+                console.print(f"\n[bold cyan]--- EDITOR INTELIGENTE: '{tabela}' ---[/bold cyan]")
+                console.print("[dim]Buscando registros atuais...[/dim]")
+                try:
+                    async with httpx.AsyncClient() as cl:
+                        r = await cl.get(f"{auditor.base_url}{tabela}?select=*", headers=auditor.headers, params={"limit": 20})
+                        rows = r.json()
+                        if not rows or not isinstance(rows, list):
+                            console.print("[red]Nenhum dado encontrado nesta tabela.[/red]")
+                            continue
+                        
+                        # Detectar coluna de ID (id, key, uuid, etc)
+                        id_col = None
+                        for col_name in ["id", "key", "uuid", "uid", "name", "slug"]:
+                            if col_name in rows[0]: id_col = col_name; break
+                        if not id_col: id_col = list(rows[0].keys())[0]
+                        
+                        # Mostrar registros numerados
+                        console.print(f"\n[bold yellow]Registros encontrados ({len(rows)}):[/bold yellow]")
+                        for ri, row in enumerate(rows, 1):
+                            label = row.get(id_col, "?")
+                            if isinstance(label, dict): label = json.dumps(label)[:60]
+                            preview = str(label)[:80]
+                            console.print(f"  [cyan][{ri}][/cyan] {id_col}=[bold]{preview}[/bold]")
+                        
+                        pick = input(f"\nQual registro editar? (1-{len(rows)}): ").strip()
+                        if not pick.isdigit() or int(pick) < 1 or int(pick) > len(rows):
+                            console.print("[red]Número inválido.[/red]"); continue
+                        
+                        selected = rows[int(pick) - 1]
+                        filter_val = selected[id_col]
+                        filtro = f"{id_col}=eq.{filter_val}"
+                        
+                        # Mostrar campos editáveis
+                        console.print(f"\n[bold yellow]Campos do registro selecionado:[/bold yellow]")
+                        flat_fields = {}
+                        field_num = 1
+                        for col, val in selected.items():
+                            if isinstance(val, dict):
+                                console.print(f"  [cyan][{col}][/cyan] (JSON com subcampos):")
+                                for sub_k, sub_v in val.items():
+                                    flat_fields[str(field_num)] = (col, sub_k, sub_v)
+                                    display_v = str(sub_v)[:60] if sub_v else "[vazio]"
+                                    console.print(f"    [white][{field_num}][/white] {sub_k} = [dim]{display_v}[/dim]")
+                                    field_num += 1
+                            else:
+                                flat_fields[str(field_num)] = (col, None, val)
+                                display_v = str(val)[:60] if val else "[vazio]"
+                                console.print(f"  [white][{field_num}][/white] {col} = [dim]{display_v}[/dim]")
+                                field_num += 1
+                        
+                        # Coletar edições
+                        console.print(f"\n[bold cyan]Quais campos quer alterar?[/bold cyan]")
+                        console.print("[dim]  Digite o número do campo e o novo valor. Ex: 5=novo_valor[/dim]")
+                        console.print("[dim]  Digite 'OK' quando terminar ou 'CANCELAR' para sair.[/dim]")
+                        
+                        changes = {}
+                        json_changes = {}  # Para campos dentro de JSON
+                        while True:
+                            entry = input(f"  Edição: ").strip()
+                            if not entry or entry.upper() == "CANCELAR": break
+                            if entry.upper() == "OK": break
+                            if "=" not in entry:
+                                console.print("[red]    Formato: numero=novo_valor (ex: 5=11999990000)[/red]")
+                                continue
+                            num, new_val = entry.split("=", 1)
+                            num = num.strip()
+                            new_val = new_val.strip()
+                            if num not in flat_fields:
+                                console.print(f"[red]    Campo [{num}] não encontrado.[/red]")
+                                continue
+                            
+                            col, sub_key, old_val = flat_fields[num]
+                            if sub_key:
+                                # Campo JSON aninhado
+                                if col not in json_changes:
+                                    json_changes[col] = dict(selected[col])  # copia o JSON original
+                                json_changes[col][sub_key] = new_val
+                                console.print(f"[green]    ✓ {col}.{sub_key}: {str(old_val)[:30]} → {new_val}[/green]")
+                            else:
+                                # Campo simples
+                                if new_val.isdigit(): new_val = int(new_val)
+                                elif new_val.lower() in ["true", "false"]: new_val = new_val.lower() == "true"
+                                changes[col] = new_val
+                                console.print(f"[green]    ✓ {col}: {str(old_val)[:30]} → {new_val}[/green]")
+                        
+                        # Merge changes
+                        payload = {**changes, **json_changes}
+                        if not payload:
+                            console.print("[yellow]Nenhuma alteração feita.[/yellow]")
+                            continue
+                        
+                        console.print(f"\n[dim]Filtro: {filtro}[/dim]")
+                        console.print(f"[dim]Payload: {json.dumps(payload, ensure_ascii=False, indent=2)}[/dim]")
+                        if input("\nConfirmar edição? (S/N): ").strip().upper() == "S":
+                            res = await cl.patch(f"{auditor.base_url}{tabela}?{filtro}", headers=auditor.headers, json=payload)
+                            if res.status_code in [200, 204]:
+                                console.print(f"[bold green][+] Editado com sucesso! ({res.status_code})[/bold green]")
+                            else:
+                                console.print(f"[red]Erro ({res.status_code}): {res.text[:300]}[/red]")
+                except Exception as e:
+                    console.print(f"[red]Erro: {e}[/red]")
 
         elif c == "8":
             idx = input("Nr. do alvo: ").strip()
