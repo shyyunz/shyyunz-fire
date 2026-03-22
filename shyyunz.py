@@ -35,8 +35,8 @@ BANNER = """
 ██████╔╝██║  ██║   ██║      ██║   ██║ ╚████║███████╗
 ╚═════╝ ╚═╝  ╚═╝   ╚═╝      ╚═╝   ╚═╝  ╚═══╝╚══════╝
 [/bold cyan][bold magenta] ╔═════════════════════════════════════════════════════╗
- ║ [bold white]SHYYUNZ SEC - SUPABASE v5.0[/bold white]       ║
- ║ [bold cyan]Intelligence & Advanced Stealth[/bold cyan]     ║
+ ║ [bold white]SHYYUNZ SEC - SUPABASE v7.0[/bold white]       ║
+ ║ [dim]Tactical Shell & RPC Sniper Edition[/dim]    ║
  ╚═════════════════════════════════════════════════════╝[/bold magenta]
 """
 
@@ -477,6 +477,42 @@ class ShyyunzAuditor:
             except: pass
             finally: progress.advance(task_id)
 
+    async def deep_bucket_scan(self):
+        common_buckets = ["avatars", "backups", "configs", "media", "public", "profiles", "documents", "imports", "exports", "logs"]
+        learned_buckets = knowledge.data.get('buckets', [])
+        all_buckets = list(set(common_buckets + learned_buckets))
+        
+        console.print("\n[bold cyan][*] Iniciando Deep Bucket Scan (Testando Escrita/Vazamento)...[/bold cyan]")
+        async with httpx.AsyncClient(headers=self.headers, follow_redirects=True) as client:
+            for b_name in all_buckets:
+                # 1. Teste de Listagem (GET)
+                res_listing = await client.get(f"{self.storage_url}bucket/{b_name}")
+                if res_listing.status_code == 200:
+                    console.print(f"[bold red][!] BUCKET ABERTO (Listagem): {b_name}[/bold red]")
+                
+                # 2. Teste de Escrita (WRITE - Upload)
+                test_file = {"file": ("sh_test.txt", b"SHYYUNZ SEC: VULN_TEST", "text/plain")}
+                res_upload = await client.post(f"{self.storage_url}object/{b_name}/sh_test.txt", files=test_file)
+                if res_upload.status_code in [200, 201]:
+                    console.print(f"[bold red][!!!] BUCKET VULNERÁVEL A ESCRITA (DEFACEMENT): {b_name}[/bold red]")
+                
+    async def rpc_sniper(self, brain: Optional[ShyyunzBrain] = None):
+        common_rpcs = ["get_users", "get_all_users", "reset_password", "debug_info", "admin_stats", "get_config", "system_info", "list_all", "get_secrets", "get_api_keys"]
+        learned_rpcs = knowledge.data.get('rpcs', [])
+        all_rpcs = list(set(common_rpcs + learned_rpcs))
+        
+        console.print("\n[bold magenta][*] Iniciando RPC Sniper (Brute-Naming Functions)...[/bold magenta]")
+        async with httpx.AsyncClient(headers=self.headers) as client:
+            for rpc in all_rpcs:
+                res = await client.post(f"{self.root_url}/rest/v1/rpc/{rpc}", json={})
+                if res.status_code in [200, 204]:
+                    console.print(f"[bold red][!] RPC ENCONTRADO (EXPOSTO): {rpc}[/bold red]")
+                    knowledge.learn("rpcs", rpc)
+                    if brain:
+                        with console.status(f"[*] Analisando perigos da RPC {rpc}..."):
+                            analysis = await brain.analyze_data(f"RPC_{rpc}", res.json() if res.status_code == 200 else [])
+                            console.print(Panel(analysis, title=f"Alerta IA (RPC): {rpc}", border_style="red"))
+
     async def run_scan(self, tables: List[str], rpcs: List[str], buckets: List[str]):
         proxy = self.current_proxy if self.proxies else None
         async with httpx.AsyncClient(verify=False, http2=True, proxy=proxy) as client:
@@ -644,8 +680,8 @@ async def audit_routine():
             console.print("[3] Sign-Up Interativo   [4] Listar Buckets Storage")
             console.print("[6] Inserir Dados (POST) [7] Editar Dados (PATCH)")
             console.print("[8] Excluir Dados (DEL)  [9] Anonymous Login (Bypass Email)")
-            console.print("[L] Monitor de Logs (LIVE) [K] Ver Conhecimento Aprendido")
-            console.print("[D] Exfiltração TOTAL    [0] Sair")
+            console.print("[L] Monitor de Logs (LIVE) [K] Ver Conhecimento Aprendido [B] Deep Bucket Scan")
+            console.print("[D] Exfiltração TOTAL    [R] RPC Sniper (Audit)      [0] Sair")
             console.print("[5] Nova Auditoria")
             c = input("\n[S_SEC] Comando: ").strip().upper()
             if c == "0": return False
@@ -677,6 +713,10 @@ async def audit_routine():
                         console.print("[yellow][!] Selecione uma tabela legível para DUMP/Análise.[/yellow]")
                 else:
                     console.print("[yellow][!] Alvo inválido.[/yellow]")
+            elif c == "R":
+                await auditor.rpc_sniper(brain if 'brain' in locals() else None)
+            elif c == "B":
+                await auditor.deep_bucket_scan()
             elif c == "K":
                 console.print(Panel(json.dumps(knowledge.data, indent=2), title="Cérebro da Shyyunz", border_style="green"))
             elif c == "L":
