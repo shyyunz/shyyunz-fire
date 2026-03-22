@@ -91,7 +91,8 @@ knowledge = KnowledgeManager()
 class ConfigManager:
     """Gerencia as configurações locais do usuário (API Keys, etc)."""
     def __init__(self, filename=".sh_config.json"):
-        self.filename = filename
+        # Usa caminho absoluto para garantir que salve sempre no mesmo lugar (pasta do usuário)
+        self.filename = os.path.join(os.path.expanduser("~"), filename)
         self.config = self.load()
 
     def load(self):
@@ -107,11 +108,17 @@ class ConfigManager:
         except: pass
 
     def get_api_key(self):
-        return self.config.get("gemini_api_key")
+        key = self.config.get("gemini_api_key")
+        # Validação simples de formato Gemini (começa com AIzaSy)
+        if key and key.startswith("AIzaSy"): return key
+        return None
 
     def set_api_key(self, key: str):
-        self.config["gemini_api_key"] = key.strip()
-        self.save()
+        if key.startswith("AIzaSy"):
+            self.config["gemini_api_key"] = key.strip()
+            self.save()
+            return True
+        return False
 
 sh_config = ConfigManager()
 
@@ -406,12 +413,29 @@ async def audit_routine():
         elif c == "K": console.print(Panel(json.dumps(knowledge.data, indent=2), title="Conhecimento"))
 
 async def main():
-    # Verificação Inicial de API Key
-    if not sh_config.get_api_key():
+    # Verificação Inicial Inteligente de API Key
+    while not sh_config.get_api_key():
+        console.clear()
         console.print(Align.center(BANNER))
-        console.print(Panel("[bold yellow]SUPABASE AUDITOR v8.0 - PRIMEIRA EXECUÇÃO[/bold yellow]\n\nPara ativar o Cérebro Analítico (IA), insira sua Gemini API Key.\nVocê pode obter uma em: [underline]https://aistudio.google.com/app/apikey[/underline]", title="Shadow Ops Setup"))
-        key = console.input("\n[bold cyan][🧠 SHY_CONFIG][/bold cyan] Insira sua Gemini API Key: ").strip()
-        if key: sh_config.set_api_key(key)
+        console.print(Panel(
+            "[bold yellow]SUPABASE AUDITOR v8.0 - SHADOW OPS SETUP[/bold yellow]\n\n"
+            "O [bold magenta]Cérebro Analítico (IA)[/bold magenta] está desativado.\n"
+            "Para ativar, insira sua [bold cyan]Gemini API Key[/bold cyan].\n\n"
+            "[dim]A chave será salva de forma oculta em: {sh_config.filename}[/dim]",
+            title="Initial Configuration"
+        ))
+        key = console.input("\n[bold cyan][🧠 SHY_CONFIG][/bold cyan] Insira API Key (começa com AIzaSy...) ou 'SAIR' p/ ignorar: ").strip()
+        
+        if key.upper() == "SAIR": 
+            console.print("[yellow][!] Aviso: O Scan rodará sem inteligência artificial.[/yellow]")
+            time.sleep(2); break
+            
+        if sh_config.set_api_key(key):
+            console.print("[bold green][+] Chave validada e salva com sucesso![/bold green]")
+            time.sleep(1.5); break
+        else:
+            console.print("[bold red][!] ERRO: Chave inválida. Chaves Gemini devem começar com 'AIzaSy'.[/bold red]")
+            time.sleep(2.5)
 
     while True:
         if not await audit_routine(): break
