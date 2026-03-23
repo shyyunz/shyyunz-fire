@@ -1,7 +1,7 @@
 # 🐉 SHYYUNZ SUPABASE AUDITOR v2.0 - SHADOW OPS EDITION
 
 [![Python Version](https://img.shields.io/badge/python-3.8%2B-blue?style=for-the-badge&logo=python)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-8.0--tactical-magenta?style=for-the-badge)](https://github.com/shyyunz/shyyunz-supabase)
+[![Version](https://img.shields.io/badge/version-2.0--tactical-magenta?style=for-the-badge)](https://github.com/shyyunz/shyyunz-supabase)
 [![Security](https://img.shields.io/badge/role-offensive--security-red?style=for-the-badge)](https://www.supabase.com/)
 
 > **AVISO**: Esta ferramenta foi criada exclusivamente para fins educacionais e auditorias de segurança autorizadas. O uso indevido contra sistemas sem permissão é de total responsabilidade do usuário.
