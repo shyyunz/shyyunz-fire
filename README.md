@@ -1,4 +1,4 @@
-# 🐉 SHYYUNZ SUPABASE AUDITOR v8.0 - SHADOW OPS EDITION
+# 🐉 SHYYUNZ SUPABASE AUDITOR v2.0 - SHADOW OPS EDITION
 
 [![Python Version](https://img.shields.io/badge/python-3.8%2B-blue?style=for-the-badge&logo=python)](https://www.python.org/)
 [![Version](https://img.shields.io/badge/version-8.0--tactical-magenta?style=for-the-badge)](https://github.com/shyyunz/shyyunz-supabase)
@@ -14,7 +14,7 @@ A **SHYYUNZ SUPABASE AUDITOR** é um ecossistema tático avançado projetado par
 
 ---
 
-## 🚀 Funcionalidades de Elite (v8.0)
+## 🚀 Funcionalidades de Elite (v2.0)
 
 ### 🧠 Cérebro Analítico (IA Integration)
 Integrada ao **Google Gemini 1.5 Flash**, a Shyyunz não apenas baixa dados; ela os compreende.
