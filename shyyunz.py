@@ -252,7 +252,7 @@ class ShyyunzAuditor:
                 if r.status_code in [200, 201]:
                     token = data.get('access_token')
                     if token:
-                        console.print(f"[bold green][+] Conta criada com sucesso! Email: {email}[/bold green]")
+                        console.print(f"[bold green][+] Conta criada com sucesso! Email: {email} Senha: {password}[/bold green]")
                         return token
                     else:
                         console.print(f"[yellow][!] Conta criada, mas sem token (confirmação por e-mail pode estar ativada).[/yellow]")
