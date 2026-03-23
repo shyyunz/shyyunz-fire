@@ -34,7 +34,7 @@ BANNER = """
 ██████╔╝██║  ██║   ██║      ██║   ██║ ╚████║███████╗
 ╚═════╝ ╚═╝  ╚═╝   ╚═╝      ╚═╝   ╚═╝  ╚═══╝╚══════╝
 [/bold cyan][bold magenta] ╔═════════════════════════════════════════════════════╗
- ║ [bold white]SHYYUNZ SEC - SUPABASE v8.0[/bold white]       ║
+ ║ [bold white]SHYYUNZ SEC - SUPABASE v2.0[/bold white]       ║
  ║ [dim]Shadow Ops & Ultimate Exploit Edition[/dim]   ║
  ╚═════════════════════════════════════════════════════╝[/bold magenta]
 """
@@ -55,7 +55,7 @@ BRANDED_BANNER = r"""
  `  |/  V  V  `   V  \# \ |  | / #/  V   '  V  V  \|  '
      `   `  `      `   /  \_|  |_/  \   '      '  '   '
                      /            \\
-                    |   [bold white]SHYYUNZ SEC[/bold white]   |
+                    |   [bold white]SHYYUNZ[/bold white]   |
                      \____________/
 [/bold cyan]
 """
