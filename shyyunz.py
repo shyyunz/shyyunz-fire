@@ -376,6 +376,18 @@ class FirebaseAuditor:
                 table.add_row(doc_id, json.dumps(simple, ensure_ascii=False)[:100] + "...")
             console.print(table)
             
+            # Paginação de Exibição
+            offset = 0
+            page_size = 20
+            while offset < len(all_docs):
+                display_chunk = all_docs[offset : offset + page_size]
+                self._display_docs(col_name, display_chunk)
+                offset += page_size
+                if offset < len(all_docs):
+                    opt = input(f"\n[?] Exibir mais {min(page_size, len(all_docs)-offset)} de {len(all_docs)} registros? (S/N/T para todos): ").strip().upper()
+                    if opt == "N": break
+                    if opt == "T": page_size = len(all_docs) # Exibe o resto
+            
             save = input("\n[?] Deseja salvar este dump completo em JSON? (S/N): ").strip().upper()
             if save == "S":
                 custom_name = input(f"[?] Nome do arquivo (ENTER para 'dump_firestore_{col_name}_{int(time.time())}.json'): ").strip()
@@ -1056,27 +1068,17 @@ class ShyyunzAuditor:
                     break
 
         if all_rows:
-            # Otimização Visual: Limita colunas no terminal para não quebrar o layout
-            all_keys = list(all_rows[0].keys())
-            display_keys = all_keys[:6] 
-            
-            table = Table(title=f"DUMP: {table_name} ({len(all_rows)} registros)", box=SIMPLE)
-            for key in display_keys:
-                table.add_column(key, style="cyan", no_wrap=True, overflow="ellipsis")
-            
-            if len(all_keys) > 6:
-                table.add_column("...", style="dim")
-
-            # Mostra apenas as primeiras 20 no terminal para não poluir
-            for row in all_rows[:20]:
-                display_vals = [str(row.get(k, ""))[:30] for k in display_keys]
-                if len(all_keys) > 6:
-                    display_vals.append("...")
-                table.add_row(*display_vals)
-            console.print(table)
-                
-            if len(all_rows) > 20: 
-                console.print(f"[yellow][!] ... e mais {len(all_rows)-20} linhas ocultas no terminal.[/yellow]")
+            # Paginação de Exibição 
+            offset = 0
+            page_size = 20
+            while offset < len(all_rows):
+                display_chunk = all_rows[offset : offset + page_size]
+                self._display_table(table_name, display_chunk)
+                offset += page_size
+                if offset < len(all_rows):
+                    opt = input(f"\n[?] Exibir mais {min(page_size, len(all_rows)-offset)} de {len(all_rows)} registros? (S/N/T para todos): ").strip().upper()
+                    if opt == "N": break
+                    if opt == "T": page_size = len(all_rows)
 
             save = input("\n[?] Deseja salvar este dump completo em arquivo? (S/N): ").strip().upper()
             if save == "S":
