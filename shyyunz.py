@@ -1449,6 +1449,127 @@ async def shopify_routine(shop_url, site_url):
                 else: console.print(f"[dim][-] Admin Status: {r.status_code}[/dim]")
         elif c == "3": await auditor.dump_api_data(f"{shop_url}/products.json")
 
+async def pick_record_paginated(auditor, table_name):
+    """Lógica de seleção de registros com paginação e busca."""
+    offset = 0
+    limit = 20
+    search_query = ""
+    
+    while True:
+        url = f"{auditor.base_url}{table_name}?select=*"
+        if search_query:
+            if "=" in search_query: url += f"&{search_query}"
+            else: url += f"&or=(email.ilike.*{search_query}*,username.ilike.*{search_query}*,id.ilike.*{search_query}*)"
+        
+        headers = auditor.headers.copy()
+        headers["Range"] = f"{offset}-{offset + limit - 1}"
+        headers["Prefer"] = "count=planned"
+        
+        async with httpx.AsyncClient(timeout=15.0, verify=False) as cl:
+            try:
+                r = await cl.get(url, headers=headers)
+                if r.status_code not in [200, 206]:
+                    console.print(f"[red][!] Erro ao carregar dados: {r.text[:200]}[/red]")
+                    return None
+                rows = r.json()
+            except Exception as e:
+                console.print(f"[red][!] Conexão falhou: {e}[/red]")
+                return None
+        
+        if not rows:
+            console.print("[yellow][!] Nenhum registro encontrado nesta página/filtro.[/yellow]")
+            if offset > 0 or search_query:
+                opt = input("\n[0] Voltar  [F] Limpar Filtro: ").strip().upper()
+                if opt == "0": return None
+                if opt == "F": search_query = ""; offset = 0; continue
+            return None
+
+        # Auto-descobre ID
+        id_col = None
+        for cn in ["id", "uuid", "key", "uid", "id_primary", "slug"]:
+            if cn in rows[0]: id_col = cn; break
+        if not id_col: id_col = list(rows[0].keys())[0]
+
+        console.print(f"\n[bold yellow]--- Seleção: {table_name} (Pag: {offset//limit + 1}) ---[/bold yellow]")
+        if search_query: console.print(f"[dim]Filtro ativo: {search_query}[/dim]")
+        
+        for ri, row in enumerate(rows, 1):
+            val = row.get(id_col, "?")
+            # Tenta pegar um campo extra para facilitar a identificação
+            extra = next((v for k,v in row.items() if k.lower() in ["email", "username", "name", "login"] and v), "")
+            console.print(f"  [cyan][{ri}][/cyan] [bold]{val}[/bold] [dim]({str(extra)[:50]})[/dim]")
+        
+        console.print(f"\n[white][N] Próxima Pag    [A] Pag Anterior    [F] Buscar/Filtrar[/white]")
+        console.print(f"[white][0] Cancelar       [Número] Selecionar[/white]")
+        
+        choice = input("\n[SHY_PICK] Escolha: ").strip().upper()
+        if choice == "0": return None
+        if choice == "N": offset += limit; continue
+        if choice == "A": offset = max(0, offset - limit); continue
+        if choice == "F":
+            search_query = input("[?] Digite o termo de busca (ou coluna=valor): ").strip()
+            offset = 0; continue
+        
+        if choice.isdigit() and 1 <= int(choice) <= len(rows):
+            return rows[int(choice)-1], id_col
+        
+async def edit_table_routine(auditor, tabela):
+    console.print(f"\n[bold cyan]--- EDITAR: '{tabela}' ---[/bold cyan]")
+    res = await pick_record_paginated(auditor, tabela)
+    if not res: return
+    selected, id_col = res
+    
+    filtro = f"{id_col}=eq.{selected[id_col]}"
+    console.print(f"\n[bold yellow]Campos de {id_col}={selected[id_col]}:[/bold yellow]")
+    flat_fields = {}
+    fn = 1
+    for col, val in selected.items():
+        if isinstance(val, dict):
+            for sk, sv in val.items():
+                flat_fields[str(fn)] = (col, sk, sv); console.print(f"  [cyan][{fn}][/cyan] {col}.{sk} = {sv}"); fn += 1
+        else:
+            flat_fields[str(fn)] = (col, None, val); console.print(f"  [cyan][{fn}][/cyan] {col} = {val}"); fn += 1
+    
+    raw = input("\n  Edições (num=valor ou 1=novo_email, 2=novo_valor...): ").strip()
+    # Suporte ao Speed Edit: num-valor ou num=valor
+    raw = raw.replace("-", "=")
+    if raw:
+        payload = {}
+        for part in raw.split(","):
+            if "=" in part:
+                num, nval = part.split("=", 1)
+                num = num.strip()
+                if num in flat_fields:
+                    col, sk, _ = flat_fields[num]
+                    # Tenta converter tipos automáticos
+                    val_typed = nval.strip()
+                    if val_typed.isdigit(): val_typed = int(val_typed)
+                    elif val_typed.lower() in ["true", "false"]: val_typed = val_typed.lower() == "true"
+                    
+                    if sk:
+                        if col not in payload: payload[col] = dict(selected[col])
+                        payload[col][sk] = val_typed
+                    else: payload[col] = val_typed
+        if payload:
+            async with httpx.AsyncClient(timeout=15.0, verify=False) as cl:
+                res = await cl.patch(f"{auditor.base_url}{tabela}?{filtro}", headers=auditor.headers, json=payload)
+                if res.status_code in [200, 201, 204]: console.print("[green][+] Sucesso! Registro editado com sucesso.[/green]")
+                else: console.print(f"[red]Erro na edição: {res.text[:200]}[/red]")
+
+async def delete_table_routine(auditor, tabela):
+    console.print(f"\n[bold red]--- DELETAR: '{tabela}' ---[/bold red]")
+    res = await pick_record_paginated(auditor, tabela)
+    if not res: return
+    selected, id_col = res
+    
+    target_id = selected[id_col]
+    confirm = input(f"[bold red][!] CONFIRMAR deleção de {id_col}='{target_id}'? (S/N): [/bold red]").strip().upper()
+    if confirm == "S":
+        async with httpx.AsyncClient(timeout=15.0, verify=False) as cl:
+            res = await cl.delete(f"{auditor.base_url}{tabela}?{id_col}=eq.{target_id}", headers=auditor.headers)
+            if res.status_code in [200, 204]: console.print("[green][+] Registro deletado com sucesso![/green]")
+            else: console.print(f"[red]Erro ao deletar: {res.text[:200]}[/red]")
+
 async def supabase_routine(target, apikey, site_url, bearer_token=None):
     ai_key = sh_config.get_api_key()
     brain = ShyyunzBrain(ai_key) if ai_key else None
@@ -1549,90 +1670,12 @@ async def supabase_routine(target, apikey, site_url, bearer_token=None):
             idx = input("Nr. do alvo: ").strip()
             if idx in table_map:
                 tabela = table_map[idx]['name']
-                console.print(f"\n[bold cyan]--- EDITAR: '{tabela}' ---[/bold cyan]")
-                try:
-                    async with httpx.AsyncClient() as cl:
-                        r = await cl.get(f"{auditor.base_url}{tabela}?select=*", headers=auditor.headers, params={"limit": 20})
-                        rows = r.json()
-                    if not rows or not isinstance(rows, list): console.print("[red]Nenhum dado encontrado.[/red]")
-                    else:
-                        id_col = None
-                        for col_name in ["id", "key", "uuid", "uid", "name", "slug"]:
-                            if col_name in rows[0]: id_col = col_name; break
-                        if not id_col: id_col = list(rows[0].keys())[0]
-                        console.print(f"\n[bold yellow]Registros ({len(rows)}):[/bold yellow]")
-                        for ri, row in enumerate(rows, 1):
-                            label = row.get(id_col, "?")
-                            console.print(f"  [cyan][{ri}][/cyan] {id_col}=[bold]{str(label)[:80]}[/bold]")
-                        pick = input(f"\nQual editar? (1-{len(rows)}): ").strip()
-                        if pick.isdigit() and 1 <= int(pick) <= len(rows):
-                            selected = rows[int(pick)-1]
-                            filtro = f"{id_col}=eq.{selected[id_col]}"
-                            console.print(f"\n[bold yellow]Campos:[/bold yellow]")
-                            flat_fields = {}
-                            fn = 1
-                            for col, val in selected.items():
-                                if isinstance(val, dict):
-                                    for sk, sv in val.items():
-                                        flat_fields[str(fn)] = (col, sk, sv); console.print(f"  [cyan][{fn}][/cyan] {col}.{sk} = {sv}"); fn += 1
-                                else:
-                                    flat_fields[str(fn)] = (col, None, val); console.print(f"  [cyan][{fn}][/cyan] {col} = {val}"); fn += 1
-                            
-                            raw = input("\n  Edições (num=valor, ...): ").strip()
-                            if raw:
-                                payload = {}
-                                for part in raw.split(","):
-                                    if "=" in part:
-                                        num, nval = part.split("=", 1)
-                                        if num.strip() in flat_fields:
-                                            col, sk, _ = flat_fields[num.strip()]
-                                            if sk:
-                                                if col not in payload: payload[col] = dict(selected[col])
-                                                payload[col][sk] = nval.strip()
-                                            else: payload[col] = nval.strip()
-                                if payload:
-                                    async with httpx.AsyncClient() as cl:
-                                        res = await cl.patch(f"{auditor.base_url}{tabela}?{filtro}", headers=auditor.headers, json=payload)
-                                        if res.status_code in [200, 201, 204]: console.print("[green][+] Editado![/green]")
-                                        else: console.print(f"[red]Erro: {res.text}[/red]")
-                except Exception as e: console.print(f"[red]Erro: {e}[/red]")
+                await edit_table_routine(auditor, tabela)
         elif c == "8":
             idx = input("Nr. do alvo: ").strip()
             if idx in table_map:
                 tabela = table_map[idx]['name']
-                console.print(f"\n[bold red]--- DELETAR: '{tabela}' ---[/bold red]")
-                try:
-                    async with httpx.AsyncClient() as cl:
-                        r = await cl.get(f"{auditor.base_url}{tabela}?select=*", headers=auditor.headers, params={"limit": 20})
-                        rows = r.json()
-                    
-                    if not rows or not isinstance(rows, list):
-                        console.print("[red]Nenhum dado encontrado para deletar.[/red]")
-                    else:
-                        # Auto-descobre a coluna de ID
-                        id_col = None
-                        for cn in ["id", "uuid", "key", "uid", "id_primary", "slug"]:
-                            if cn in rows[0]: id_col = cn; break
-                        if not id_col: id_col = list(rows[0].keys())[0]
-                        
-                        console.print(f"\n[bold yellow]Registros recentes (Qual deseja apagar?):[/bold yellow]")
-                        for ri, row in enumerate(rows, 1):
-                            val = row.get(id_col, "?")
-                            desc = next((v for k,v in row.items() if k != id_col and v), "")
-                            console.print(f"  [cyan][{ri}][/cyan] {id_col}=[bold]{val}[/bold] [dim]({str(desc)[:50]})[/dim]")
-                        
-                        pick = input(f"\nEscolha o número (1-{len(rows)}) ou [ENTER] para cancelar: ").strip()
-                        if pick.isdigit() and 1 <= int(pick) <= len(rows):
-                            selected = rows[int(pick)-1]
-                            target_id = selected[id_col]
-                            confirm = input(f"[bold red][!] CONFIRMAR deleção de {id_col}='{target_id}'? (S/N): [/bold red]").strip().upper()
-                            if confirm == "S":
-                                async with httpx.AsyncClient() as cl:
-                                    res = await cl.delete(f"{auditor.base_url}{tabela}?{id_col}=eq.{target_id}", headers=auditor.headers)
-                                    if res.status_code in [200, 204]: console.print("[green][+] Registro deletado com sucesso![/green]")
-                                    else: console.print(f"[red]Erro ao deletar: {res.text[:200]}[/red]")
-                except Exception as e:
-                    console.print(f"[dim][!] Erro na operação: {e}[/dim]")
+                await delete_table_routine(auditor, tabela)
         elif c == "K":
             opt = input("[1] Ver Memória  [2] Trocar Gemini Key  [3] Limpar Memória: ").strip()
             if opt == "1": console.print(Panel(json.dumps(knowledge.data, indent=2)))
