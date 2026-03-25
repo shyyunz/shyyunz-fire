@@ -701,16 +701,27 @@ class ShyyunzAuditor:
                     console.print(f"[red][!] ERRO: 401 Unauthorized para o alvo {self.project_ref}[/red]")
                     console.print(f"[dim]    Dica: Verifique se a apikey e o token estão corretos.[/dim]")
                     
-                    # CORREÇÃO: Pede token manual se falhar o automático
-                    opt = input("\n[?] Deseja inserir uma API Key/Token manualmente? (S/N): ").strip().upper()
-                    if opt == "S":
-                        nova_key = input("[🔑] Digite o Segredo (JWT ou Key): ").strip()
+                    # CORREÇÃO: Prompt mais específico (Mudar API vs Inserir Bearer)
+                    console.print("\n[bold yellow][!] Deseja agir sobre o Erro 401?[/bold yellow]")
+                    console.print("  [1] Alterar API Key (anon)")
+                    console.print("  [2] Inserir Bearer Token (JWT de Login)")
+                    console.print("  [0] Ignorar e Prosseguir")
+                    
+                    opt = input("\n[SHY_AUTH] Escolha: ").strip()
+                    if opt == "1":
+                        nova_key = input("[🔑] Digite a nova API Key (anon): ").strip()
                         if nova_key:
                             self.apikey = nova_key
-                            self.bearer = nova_key
-                            self.headers.update({"apikey": self.apikey, "Authorization": f"Bearer {self.bearer}"})
-                            console.print("[green][+] Credenciais atualizadas! Tentando novamente...[/green]")
-                            return await self.pre_scan_auth_check() # Recursão para re-testar
+                            self.headers.update({"apikey": self.apikey})
+                            console.print("[green][+] API Key atualizada! Re-testando...[/green]")
+                            return await self.pre_scan_auth_check()
+                    elif opt == "2":
+                        jwt = input("[🔑] Digite o Bearer Token (JWT): ").strip()
+                        if jwt:
+                            self.bearer = jwt
+                            self.headers.update({"Authorization": f"Bearer {jwt}"})
+                            console.print("[green][+] Bearer Token configurado! Re-testando...[/green]")
+                            return await self.pre_scan_auth_check()
                     return False
                 return True
             except Exception as e:
