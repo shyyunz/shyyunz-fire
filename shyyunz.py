@@ -378,7 +378,10 @@ class FirebaseAuditor:
             
             save = input("\n[?] Deseja salvar este dump completo em JSON? (S/N): ").strip().upper()
             if save == "S":
-                fname = f"dump_firestore_{col_name}_{int(time.time())}.json"
+                custom_name = input(f"[?] Nome do arquivo (ENTER para 'dump_firestore_{col_name}_{int(time.time())}.json'): ").strip()
+                fname = custom_name if custom_name else f"dump_firestore_{col_name}_{int(time.time())}.json"
+                if not fname.endswith(".json"): fname += ".json"
+                
                 with open(fname, "w", encoding="utf-8") as f:
                     json.dump(all_docs, f, indent=2, ensure_ascii=False)
                 console.print(f"[bold green][+] Dump salvo em: {fname}[/bold green]")
@@ -635,7 +638,10 @@ class AdvancedAuditor:
                         
                         save = input("\n[?] Deseja salvar este dump de API em JSON? (S/N): ").strip().upper()
                         if save == "S":
-                            fname = f"dump_api_{int(time.time())}.json"
+                            custom_name = input(f"[?] Nome do arquivo (ENTER para 'dump_api_{int(time.time())}.json'): ").strip()
+                            fname = custom_name if custom_name else f"dump_api_{int(time.time())}.json"
+                            if not fname.endswith(".json"): fname += ".json"
+                            
                             with open(fname, "w", encoding="utf-8") as f:
                                 json.dump(data, f, indent=2, ensure_ascii=False)
                             console.print(f"[bold green][+] Dump salvo em: {fname}[/bold green]")
@@ -1074,7 +1080,10 @@ class ShyyunzAuditor:
 
             save = input("\n[?] Deseja salvar este dump completo em arquivo? (S/N): ").strip().upper()
             if save == "S":
-                fname = f"dump_supabase_{table_name}_{int(time.time())}.json"
+                custom_name = input(f"[?] Nome do arquivo (ENTER para 'dump_supabase_{table_name}_{int(time.time())}.json'): ").strip()
+                fname = custom_name if custom_name else f"dump_supabase_{table_name}_{int(time.time())}.json"
+                if not fname.endswith(".json"): fname += ".json"
+                
                 with open(fname, "w", encoding="utf-8") as f:
                     json.dump(all_rows, f, indent=2, ensure_ascii=False)
                 console.print(f"[bold green][+] Dump salvo em: {fname}[/bold green]")
