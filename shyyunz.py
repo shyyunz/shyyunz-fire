@@ -1604,7 +1604,7 @@ async def supabase_routine(target, apikey, site_url, bearer_token=None):
     while True:
         menu_text = (
             "[bold cyan]DADOS E EXFILTRAÇÃO[/bold cyan]\n"
-            "[white][1] Ver Dados (Dump)    [D] Sugar Tudo (Mass Exfil)[/white]\n\n"
+            "[white][1] Ver Dados (Dump) [S] Bearer token (logar sua conta) [D] Sugar Tudo (Mass Exfil)[/white]\n\n"
             "[bold cyan]ATAQUE E ESCRITA[/bold cyan]\n"
             "[white][6] Inserir (POST)      [7] Editar (PATCH)    [8] Deletar (DEL)[/white]\n"
             "[white][3] Criar Conta         [9] Login Anônimo     [E] Escalar Privilégios[/white]\n\n"
