@@ -1697,13 +1697,26 @@ async def supabase_routine(target, apikey, site_url, bearer_token=None):
                         console.print(f"[bold green][!] LOGADO: {r.json().get('email', 'Usuário')}[/bold green]")
                     else: console.print(f"[dim][-] Status do Token: {r.status_code}[/dim]")
         elif c == "K":
-            opt = input("[1] Ver Memória  [2] Trocar Gemini Key  [3] Limpar Memória: ").strip()
+            opt = input("[1] Ver Memória  [2] Trocar Gemini Key  [3] Limpar Memória  [4] Adicionar Tabela: ").strip()
             if opt == "1": console.print(Panel(json.dumps(knowledge.data, indent=2)))
             elif opt == "2":
                 key = input("Nova Key: ").strip()
-                if sh_config.set_api_key(key): console.print("[green]OK[/green]")
+                if sh_config.set_api_key(key): console.print("[green]Key atualizada.[/green]")
             elif opt == "3":
                 knowledge.data = {"tables":[], "rpcs":[], "buckets":[]}; knowledge.save(); console.print("[green]Limpo[/green]")
+            elif opt == "4":
+                nt = input("[?] Nome da tabela para adicionar e scanear: ").strip()
+                if nt:
+                    knowledge.learn("tables", nt)
+                    # Realiza scan imediato da nova tabela
+                    async with httpx.AsyncClient(verify=False, timeout=10.0) as cl:
+                        with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console) as pr:
+                            tk = pr.add_task(f"[bold cyan]Escaneando nova tabela: {nt}...", total=1)
+                            await auditor.check_target(cl, nt, "TABLE", pr, tk, brain or None)
+                        console.print(f"[bold green][+] Tabela '{nt}' adicionada e auditada com sucesso![/bold green]")
+                    # Atualiza a tabela_map para o menu refletir a mudança
+                    table_map = {}
+                    for i, r in enumerate(auditor.results, 1): table_map[str(i)] = r
 
 async def audit_routine():
     console.print(Align.center(BRANDED_BANNER))
