@@ -1022,7 +1022,7 @@ class ShyyunzAuditor:
                     if readable: knowledge.learn("buckets", target)
                 
                 if readable: self.hits_count += 1
-                progress.update(task_id, description=f"[bold red]Auditoria V8.0: [ACERTOS {self.hits_count}] ")
+                progress.update(task_id, description=f"[bold red]Exploração V2.0: [ENCONTRADOS {self.hits_count}] ")
             except: pass
             finally: progress.advance(task_id)
 
@@ -1764,7 +1764,7 @@ async def main():
         console.clear()
         console.print(Align.center(BRANDED_BANNER))
         console.print(Panel(
-            "[bold yellow]SHYYUNZ v8.0 - SHADOW OPS SETUP[/bold yellow]\n\n"
+            "[bold yellow]SHYYUNZ v2.0 - SHADOW OPS SETUP[/bold yellow]\n\n"
             "O [bold magenta]Cérebro Analítico (IA)[/bold magenta] está desativado.\n"
             "Insira sua [bold cyan]Gemini API Key[/bold cyan] (começa com AIza...).\n\n"
             "[dim]A chave será salva localmente e nunca compartilhada.[/dim]",
