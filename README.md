@@ -1,4 +1,4 @@
-# 🐉 SHYYUNZ SUPABASE AUDITOR v2.0 - SHADOW OPS EDITION
+# 🐉 SHYYUNZ FIRE AUDITOR v2.0 - SHADOW OPS EDITION
 
 [![Python Version](https://img.shields.io/badge/python-3.8%2B-blue?style=for-the-badge&logo=python)](https://www.python.org/)
 [![Version](https://img.shields.io/badge/version-2.0--tactical-magenta?style=for-the-badge)](https://github.com/shyyunz/shyyunz-supabase)
@@ -10,7 +10,7 @@
 
 ## 🛠️ Sobre a Ferramenta
 
-A **SHYYUNZ SUPABASE AUDITOR** é um ecossistema tático avançado projetado para identificar, explorar e auditar vulnerabilidades em instâncias do **Supabase**. Criada por **shyyunz**, a ferramenta evoluiu de um simples scanner para um arsenal de guerra cibernética que utiliza **Inteligência Artificial (Gemini)** para realizar ataques de precisão contra Row Level Security (RLS), Buckets de Storage e Funções RPC.
+A **SHYYUNZ FIRE AUDITOR** é um ecossistema tático avançado projetado para identificar, explorar e auditar vulnerabilidades em instâncias do **Supabase** **Firebase** e **Shopify**. Criada por **shyyunz**, a ferramenta evoluiu de um simples scanner para um arsenal de guerra cibernética que utiliza **Inteligência Artificial** para realizar ataques de precisão contra Row Level Security (RLS), Buckets de Storage e Funções RPC.
 
 ---
 
@@ -33,7 +33,7 @@ Capacidade de "Visão de Raio-X" para encontrar chaves do Supabase em aplicaçõ
 - **`[D] Mass Exfiltration`**: Dump completo de todas as tabelas vulneráveis em arquivos JSON organizados.
 
 ### 🛡️ Shadow Ops Core
-- **Rotação de Proxies**: Suporte nativo para `sh_proxies.txt`.
+- **Rotação de Proxies**: Suporte nativo para `proxies.txt`.
 - **Análise de Token JWT**: Decodificação instantânea de roles e metadados.
 - **Learning Knowledge**: Sistema de aprendizado que memoriza nomes de tabelas e RPCs descobertos para futuras auditorias.
 
