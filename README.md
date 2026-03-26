@@ -43,8 +43,8 @@ Capacidade de "Visão de Raio-X" para encontrar chaves do Supabase em aplicaçõ
 
 ```bash
 # Clone o repositório
-git clone https://github.com/shyyunz/shyyunz-supabase.git
-cd shyyunz-supabase
+git clone https://github.com/shyyunz/shyyunz-fire.git
+cd shyyunz-fire
 
 # Instale as dependências
 pip install -r requirements.txt
