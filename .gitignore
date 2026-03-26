@@ -1,3 +1,8 @@
+.github_token
 *.json
+dump_*/
 __pycache__/
-*.pyc
+.env
+.ipynb_checkpoints
+config.json
+shadow_ops_*.log
