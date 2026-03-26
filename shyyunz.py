@@ -1588,6 +1588,7 @@ async def supabase_routine(target, apikey, site_url, bearer_token=None):
     words = list(set(["users", "profiles", "accounts", "admins", "settings", "orders", "config", "roles", "secrets", "api_keys", "payments", "logs", "products", "categories", "branches", "stocks", "sales", "coupons", "chats", "messages"] + list(auditor.graphql_discovered) + knowledge.data["tables"]))
     await auditor.run_scan(words, brain)
     
+    table_map = {}
     def show_summary():
         nonlocal table_map
         table_map = {}
