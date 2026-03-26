@@ -1588,18 +1588,22 @@ async def supabase_routine(target, apikey, site_url, bearer_token=None):
     words = list(set(["users", "profiles", "accounts", "admins", "settings", "orders", "config", "roles", "secrets", "api_keys", "payments", "logs", "products", "categories", "branches", "stocks", "sales", "coupons", "chats", "messages"] + list(auditor.graphql_discovered) + knowledge.data["tables"]))
     await auditor.run_scan(words, brain)
     
-    table_map = {}
-    sum_t = Table(title="[bold red]VETORES DE EXPLORAÇÃO SELECIONADOS[/bold red]")
-    sum_t.add_column("Nr."); sum_t.add_column("Alvo"); sum_t.add_column("Leitura"); sum_t.add_column("Escrita (W/U/D)"); sum_t.add_column("Status")
-    for i, r in enumerate(auditor.results, 1):
-        read_s = "[dim]RLS[/dim]"
-        if r.get('readable'): read_s = "[bold green]EXPOSTO (DADOS)[/bold green]" if r.get('has_data') else "[bold yellow]EXPOSTO (VAZIA)[/bold yellow]"
-        wv = r.get('writes', {"post":False,"patch":False,"delete":False})
-        write_s = f"[{'W' if wv['post'] else '-'}/{'U' if wv['patch'] else '-'}/{'D' if wv['delete'] else '-'}]"
-        st = "[bold red]CRÍTICO[/bold red]" if r.get('readable') or any(wv.values()) else "[yellow]ALTO[/yellow]"
-        sum_t.add_row(str(i), r['name'], read_s, write_s + (f" ({r['bypass']})" if r.get('bypass') else ""), st)
-        table_map[str(i)] = r
-    console.print(sum_t)
+    def show_summary():
+        nonlocal table_map
+        table_map = {}
+        sum_t = Table(title="[bold red]VETORES DE EXPLORAÇÃO SELECIONADOS[/bold red]")
+        sum_t.add_column("Nr."); sum_t.add_column("Alvo"); sum_t.add_column("Leitura"); sum_t.add_column("Escrita (W/U/D)"); sum_t.add_column("Status")
+        for i, r in enumerate(auditor.results, 1):
+            read_s = "[dim]RLS[/dim]"
+            if r.get('readable'): read_s = "[bold green]EXPOSTO (DADOS)[/bold green]" if r.get('has_data') else "[bold yellow]EXPOSTO (VAZIA)[/bold yellow]"
+            wv = r.get('writes', {"post":False,"patch":False,"delete":False})
+            write_s = f"[{'W' if wv['post'] else '-'}/{'U' if wv['patch'] else '-'}/{'D' if wv['delete'] else '-'}]"
+            st = "[bold red]CRÍTICO[/bold red]" if r.get('readable') or any(wv.values()) else "[yellow]ALTO[/yellow]"
+            sum_t.add_row(str(i), r['name'], read_s, write_s + (f" ({r['bypass']})" if r.get('bypass') else ""), st)
+            table_map[str(i)] = r
+        console.print(sum_t)
+
+    show_summary()
 
     while True:
         menu_text = (
@@ -1714,9 +1718,8 @@ async def supabase_routine(target, apikey, site_url, bearer_token=None):
                             tk = pr.add_task(f"[bold cyan]Escaneando nova tabela: {nt}...", total=1)
                             await auditor.check_target(cl, nt, "TABLE", pr, tk, brain or None)
                         console.print(f"[bold green][+] Tabela '{nt}' adicionada e auditada com sucesso![/bold green]")
-                    # Atualiza a tabela_map para o menu refletir a mudança
-                    table_map = {}
-                    for i, r in enumerate(auditor.results, 1): table_map[str(i)] = r
+                    # Atualiza e Re-exibe o Sumário
+                    show_summary()
 
 async def audit_routine():
     console.print(Align.center(BRANDED_BANNER))
