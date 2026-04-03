@@ -57,7 +57,7 @@ pip install -r requirements.txt
 1. Obtenha sua API Key do Gemini no [Google AI Studio](https://aistudio.google.com/app/apikey).
 2. Execute a ferramenta:
 ```bash
-python3 shyyunz
+python shyyunz.py
 ```
 3. Insira a URL do site alvo e deixe o **JS Hunter** fazer o resto.
 
